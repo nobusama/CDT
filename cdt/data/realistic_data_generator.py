@@ -379,7 +379,7 @@ def main():
     print()
 
     # Save dataset
-    save_dataset(dataset, output_dir="/Users/nobuyukiota/Desktop/CDT/data/phase5")
+    save_dataset(dataset, output_dir="./data/realistic")
 
     print("\nDataset generation complete!")
 
