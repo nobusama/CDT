@@ -11,28 +11,17 @@ CDT is a biology-aligned neural architecture that integrates DNA, RNA, and prote
 - **Interpretable attention**: Cross-attention maps reveal which genomic regions associate with gene regulation
 - **Gradient analysis**: Identifies specific sequence features driving predictions
 
-## Installation
-
-```bash
-git clone https://github.com/nobusama/CDT.git
-cd CDT
-pip install -e .
-```
-
 ## Requirements
 
 - Python >= 3.9
 - PyTorch >= 2.0.0
-- See `requirements.txt` for full dependencies
+- Google Colab with GPU runtime (recommended)
 
 ## Data
 
 Pre-computed embeddings and training data are available on Hugging Face:
 
-```bash
-# Download from Hugging Face
-# https://huggingface.co/datasets/nobusama17/cdt-embeddings
-```
+https://huggingface.co/datasets/nobusama17/cdt-embeddings
 
 ### Data Files
 
@@ -46,26 +35,18 @@ Pre-computed embeddings and training data are available on Hugging Face:
 
 ## Training
 
-### Using Colab (Recommended)
-
 Open `notebooks/CDT_Training.ipynb` in Google Colab with GPU runtime.
 
-### Local Training
-
-```bash
-python scripts/train_cdt_v2.py \
-    --dna_path /path/to/pilot_full_v2.h5 \
-    --rna_path /path/to/k562_gene_embeddings_aligned.h5 \
-    --protein_path /path/to/human_proteomelm_embeddings_aligned.h5 \
-    --train_path /path/to/gasperini_train.h5 \
-    --val_path /path/to/gasperini_val.h5
-```
+The notebook contains the complete CDT v3.3.1 implementation including:
+- Model architecture (CDTv33Model)
+- Dataset loading (CDTv2Dataset)
+- Training loop
+- Evaluation metrics
 
 ## Results
 
 CDT v3.3.1 achieves:
 - **Pearson correlation: 0.503** on CRISPRi enhancer effect prediction
-- 3.5x improvement over seq2cells baseline (r = 0.143)
 - 63% of theoretical ceiling (r = 0.797, inter-experiment correlation)
 
 ## Architecture
