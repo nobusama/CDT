@@ -70,19 +70,9 @@ CDT v3.3.1 achieves:
 
 ## Architecture
 
-```
-DNA [896, 3072]     RNA [2360, 512]     Protein [2360, 768]
-      ↓                   ↓                     ↓
- Self-Attention     Self-Attention       Self-Attention
-      ↓                   ↓                     ↓
-      └─────────────Cross-Attention─────────────┘
-                          ↓
-              Virtual Cell Embedder (VCE)
-                          ↓
-                     Task Layer
-                          ↓
-               Per-gene effect predictions
-```
+<p align="center">
+  <img src="docs/figures/CDT_diagram.png" alt="CDT Architecture" width="600">
+</p>
 
 ## Citation
 
