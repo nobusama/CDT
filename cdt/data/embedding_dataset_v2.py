@@ -1,12 +1,12 @@
 """
 CDT v2 Dataset: Sequence-Level Embeddings with Full Proteome
 
-v2アーキテクチャに対応:
-- DNA: [batch, 896, 3072] - Enformer sequence-level (サンプルごとに異なる)
-- Protein: [n_proteins, 768] - 全プロテオーム (バッチ間で共有)
-- RNA: [batch, n_genes, 512] - 遺伝子発現 (サンプルごとに異なる可能性)
+Compatible with v2 architecture:
+- DNA: [batch, 896, 3072] - Enformer sequence-level (different for each sample)
+- Protein: [n_proteins, 768] - Full proteome (shared across batches)
+- RNA: [batch, n_genes, 512] - Gene expression (may differ per sample)
 
-出力: [batch, n_proteins] - 各(エンハンサー, タンパク質)ペアの結合予測
+Output: [batch, n_proteins] - Binding prediction for each (enhancer, protein) pair
 """
 
 import torch
@@ -19,19 +19,20 @@ from typing import Dict, Optional, Tuple, List
 
 class CDTv2Dataset(Dataset):
     """
-    CDT v2用のPyTorchデータセット
+    PyTorch Dataset for CDT v2
 
-    各サンプルはエンハンサー位置を表し、モデルは全タンパク質との結合を予測する。
+    Each sample represents an enhancer position, and the model predicts binding
+    with all proteins.
 
-    入力:
+    Input:
         - DNA: [896, 3072] (Enformer sequence-level)
-        - RNA: [n_genes, 512] (遺伝子発現プロファイル)
+        - RNA: [n_genes, 512] (gene expression profile)
 
-    Protein埋め込みは全サンプル共通なので、__getitem__では返さない。
-    代わりにget_protein_embeddings()で取得。
+    Protein embeddings are shared across all samples, so not returned in __getitem__.
+    Use get_protein_embeddings() to retrieve them instead.
 
-    ラベル:
-        - labels: [n_proteins] (このエンハンサーと各タンパク質の結合)
+    Labels:
+        - labels: [n_proteins] (binding between this enhancer and each protein)
     """
 
     def __init__(
@@ -41,20 +42,20 @@ class CDTv2Dataset(Dataset):
         proteomelm_path: str = None,
         rna_gene_path: str = None,
         project_root: str = None,
-        n_proteins: int = None,  # デバッグ用: タンパク質数を制限
-        use_training_subset: bool = False,  # 学習サブセット(9523)を使用
-        use_aligned: bool = True,  # RNA-Proteinアラインメント(2360)を使用
+        n_proteins: int = None,  # Debug: limit number of proteins
+        use_training_subset: bool = False,  # Use training subset (9523)
+        use_aligned: bool = True,  # Use RNA-Protein alignment (2360)
     ):
         """
         Args:
-            training_data_path: 学習データ(HDF5)のパス (enhancer-protein pairs)
-            dna_seqlevel_path: Enformer sequence-level埋め込みのパス
-            proteomelm_path: ProteomeLM全プロテオーム埋め込みのパス
-            rna_gene_path: 遺伝子発現埋め込みのパス
-            project_root: プロジェクトルート
-            n_proteins: デバッグ用にタンパク質数を制限
-            use_training_subset: 学習データに含まれるタンパク質のみ使用 (20420→9523)
-            use_aligned: RNA-Proteinアラインメント版を使用 (2360遺伝子)
+            training_data_path: Path to training data (HDF5) (enhancer-protein pairs)
+            dna_seqlevel_path: Path to Enformer sequence-level embeddings
+            proteomelm_path: Path to ProteomeLM full proteome embeddings
+            rna_gene_path: Path to gene expression embeddings
+            project_root: Project root
+            n_proteins: Limit number of proteins for debugging
+            use_training_subset: Use only proteins in training data (20420 -> 9523)
+            use_aligned: Use RNA-Protein aligned version (2360 genes)
         """
         if project_root is None:
             project_root = Path(__file__).parent.parent.parent
@@ -63,7 +64,7 @@ class CDTv2Dataset(Dataset):
         self.use_training_subset = use_training_subset
         self.use_aligned = use_aligned
 
-        # デフォルトパス
+        # Default paths
         if dna_seqlevel_path is None:
             dna_seqlevel_path = self.project_root / "data/processed/embeddings/enformer_seqlevel/pilot_1000.h5"
         if proteomelm_path is None:
@@ -85,18 +86,18 @@ class CDTv2Dataset(Dataset):
         self.rna_gene_path = Path(rna_gene_path)
         self.n_proteins_limit = n_proteins
 
-        # インデックスマッピングを読み込み
+        # Load index mapping
         if use_aligned:
             self._load_index_mapping(aligned=True)
         elif use_training_subset:
             self._load_index_mapping(aligned=False)
 
-        # データ読み込み
+        # Load data
         self._load_training_data()
         self._load_embeddings()
 
     def _load_index_mapping(self, aligned: bool = False):
-        """タンパク質インデックスのマッピングを読み込み"""
+        """Load protein index mapping"""
         if aligned:
             mapping_path = self.project_root / "data/processed/embeddings/protein_index_mapping_aligned.npz"
         else:
@@ -108,33 +109,33 @@ class CDTv2Dataset(Dataset):
         print(f"Loaded protein index mapping: {len(self.old_to_new_idx)} proteins (aligned={aligned})")
 
     def _load_training_data(self):
-        """学習データ（enhancer-protein pairs）を読み込み"""
+        """Load training data (enhancer-protein pairs)"""
         with h5py.File(self.training_data_path, 'r') as f:
-            # pair_indices: どのDNA埋め込みを使うか
+            # pair_indices: which DNA embedding to use
             enformer_idx = f['enformer_idx'][:]
 
-            # タンパク質インデックス (ESM-2/ProteomeLM)
+            # Protein index (ESM-2/ProteomeLM)
             orig_protein_idx = f['esm2_idx'][:]
 
-            # ラベル
+            # Labels
             labels = f['labels'][:]
 
-            # Beta値（回帰用）
+            # Beta values (for regression)
             if 'beta' in f:
                 beta_values = f['beta'][:]
             else:
                 beta_values = np.zeros_like(labels, dtype=np.float32)
 
-        # アラインモード: マッピング可能なサンプルのみフィルタ
+        # Aligned mode: filter only samples that can be mapped
         if self.use_aligned or self.use_training_subset:
-            # 有効なサンプルをフィルタ
+            # Filter valid samples
             valid_mask = np.array([int(idx) in self.old_to_new_idx for idx in orig_protein_idx])
 
             self.enformer_idx = enformer_idx[valid_mask]
             self.labels = labels[valid_mask]
             self.beta_values = beta_values[valid_mask]
 
-            # インデックスを再マッピング
+            # Remap indices
             valid_orig_idx = orig_protein_idx[valid_mask]
             self.protein_idx = np.array([
                 self.old_to_new_idx[int(idx)] for idx in valid_orig_idx
@@ -156,15 +157,15 @@ class CDTv2Dataset(Dataset):
         print(f"Training data: {self.n_samples} samples ({self.n_positive} positive)")
 
     def _load_embeddings(self):
-        """全埋め込みを読み込み"""
+        """Load all embeddings"""
         # DNA sequence-level embeddings
         self.dna_file = h5py.File(self.dna_seqlevel_path, 'r')
         self.dna_emb = self.dna_file['embeddings']  # [N, 896, 3072]
-        self.dna_pair_indices = self.dna_file['pair_indices'][:]  # マッピング
+        self.dna_pair_indices = self.dna_file['pair_indices'][:]  # Mapping
         self.dna_seq_len = self.dna_emb.shape[1]  # 896
         self.dna_dim = self.dna_emb.shape[2]  # 3072
 
-        # Protein embeddings (全プロテオーム)
+        # Protein embeddings (full proteome)
         with h5py.File(self.proteomelm_path, 'r') as f:
             self.protein_emb = f['embeddings'][:]  # [n_proteins, 768]
             self.protein_ids = [x.decode() if isinstance(x, bytes) else x
@@ -172,7 +173,7 @@ class CDTv2Dataset(Dataset):
             self.protein_gene_names = [x.decode() if isinstance(x, bytes) else x
                                         for x in f['gene_names'][:]]
 
-        # タンパク質数を制限（デバッグ用）
+        # Limit number of proteins (for debugging)
         if self.n_proteins_limit is not None:
             self.protein_emb = self.protein_emb[:self.n_proteins_limit]
             self.protein_ids = self.protein_ids[:self.n_proteins_limit]
@@ -194,36 +195,36 @@ class CDTv2Dataset(Dataset):
         print(f"Protein embeddings: {self.protein_emb.shape}")
         print(f"RNA gene embeddings: {self.rna_emb.shape}")
 
-        # DNA pair_index → seqlevel index マッピング作成
+        # Create DNA pair_index -> seqlevel index mapping
         self._create_dna_index_mapping()
 
-        # タンパク質ID → インデックス マッピング
+        # Create protein ID -> index mapping
         self._create_protein_index_mapping()
 
     def _create_dna_index_mapping(self):
-        """学習データのenformer_idxからseqlevel埋め込みへのマッピング"""
-        # dna_pair_indices: seqlevel埋め込みが対応する元のpair_idx
+        """Mapping from training data enformer_idx to seqlevel embedding"""
+        # dna_pair_indices: original pair_idx that seqlevel embedding corresponds to
         self.dna_idx_map = {}
         for seqlevel_idx, pair_idx in enumerate(self.dna_pair_indices):
             self.dna_idx_map[pair_idx] = seqlevel_idx
 
     def _create_protein_index_mapping(self):
-        """タンパク質遺伝子名 → ProteomeLMインデックス マッピング"""
+        """Mapping from protein gene name -> ProteomeLM index"""
         self.protein_gene_to_idx = {
             gene: idx for idx, gene in enumerate(self.protein_gene_names)
         }
 
     def _get_dna_emb(self, enformer_idx: int) -> np.ndarray:
         """
-        enformer_idxからDNA埋め込みを取得
+        Get DNA embedding from enformer_idx
 
-        seqlevelデータにない場合はゼロ埋め込みを返す
+        Returns zero embedding if not in seqlevel data
         """
         if enformer_idx in self.dna_idx_map:
             seqlevel_idx = self.dna_idx_map[enformer_idx]
             return self.dna_emb[seqlevel_idx, :, :].astype(np.float32)
         else:
-            # seqlevelデータがない場合はスキップ（ゼロ）
+            # Skip (zero) if seqlevel data not available
             return np.zeros((self.dna_seq_len, self.dna_dim), dtype=np.float32)
 
     def __len__(self) -> int:
@@ -231,28 +232,28 @@ class CDTv2Dataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
-        指定インデックスのサンプルを取得
+        Get sample at specified index
 
         Returns:
             dict: {
                 'dna_emb': [896, 3072],
                 'rna_emb': [n_genes, 512],
-                'protein_idx': このペアのタンパク質インデックス,
+                'protein_idx': protein index for this pair,
                 'label': 0 or 1,
-                'beta': 効果サイズ（連続値、回帰用）
+                'beta': effect size (continuous, for regression)
             }
         """
-        # DNA埋め込み
+        # DNA embedding
         enf_idx = int(self.enformer_idx[idx])
         dna_emb = self._get_dna_emb(enf_idx)
 
-        # RNA埋め込み（現状はK562の遺伝子埋め込みを全サンプル共有）
+        # RNA embedding (currently K562 gene embeddings shared across all samples)
         rna_emb = self.rna_emb.astype(np.float32)
 
-        # このペアのタンパク質インデックス
+        # Protein index for this pair
         prot_idx = int(self.protein_idx[idx])
 
-        # ラベル（分類用）とベータ値（回帰用）
+        # Label (for classification) and beta value (for regression)
         label = self.labels[idx]
         beta = self.beta_values[idx]
 
@@ -265,11 +266,11 @@ class CDTv2Dataset(Dataset):
         }
 
     def get_protein_embeddings(self) -> torch.Tensor:
-        """全タンパク質埋め込みを返す（バッチ間で共有）"""
+        """Return all protein embeddings (shared across batches)"""
         return torch.from_numpy(self.protein_emb.astype(np.float32))
 
     def get_dims(self) -> Dict[str, int]:
-        """各埋め込みの次元を返す"""
+        """Return dimensions of each embedding"""
         return {
             'dna_seq_len': self.dna_seq_len,
             'dna_dim': self.dna_dim,
@@ -280,12 +281,12 @@ class CDTv2Dataset(Dataset):
         }
 
     def get_class_weights(self) -> torch.Tensor:
-        """クラス不均衡対策用の重みを計算"""
+        """Compute weights for class imbalance handling"""
         weight_positive = self.n_negative / self.n_positive
         return torch.tensor([1.0, weight_positive], dtype=torch.float32)
 
     def close(self):
-        """ファイルハンドルを閉じる"""
+        """Close file handles"""
         try:
             if hasattr(self, 'dna_file') and self.dna_file:
                 self.dna_file.close()
@@ -301,7 +302,7 @@ class CDTv2Dataset(Dataset):
 
 def collate_v2(batch: List[Dict]) -> Dict[str, torch.Tensor]:
     """
-    v2用のカスタムcollate関数
+    Custom collate function for v2
 
     Returns:
         dict: {
@@ -309,7 +310,7 @@ def collate_v2(batch: List[Dict]) -> Dict[str, torch.Tensor]:
             'rna_emb': [batch, n_genes, 512],
             'protein_indices': [batch,],
             'labels': [batch,],
-            'betas': [batch,],  # 回帰用
+            'betas': [batch,],  # for regression
         }
     """
     dna_embs = torch.stack([item['dna_emb'] for item in batch])
@@ -331,18 +332,18 @@ def create_v2_dataloaders(
     project_root: str = None,
     batch_size: int = 16,
     num_workers: int = 0,
-    n_proteins: int = None,  # デバッグ用
-    use_training_subset: bool = True,  # 学習サブセットを使用
+    n_proteins: int = None,  # For debugging
+    use_training_subset: bool = True,  # Use training subset
 ) -> Tuple[DataLoader, DataLoader, DataLoader, torch.Tensor]:
     """
-    CDT v2用のDataLoaderを作成
+    Create DataLoaders for CDT v2
 
     Args:
-        project_root: プロジェクトルート
-        batch_size: バッチサイズ
-        num_workers: DataLoaderのワーカー数
-        n_proteins: デバッグ用にタンパク質数を制限
-        use_training_subset: 学習データに含まれるタンパク質のみ使用
+        project_root: Project root
+        batch_size: Batch size
+        num_workers: Number of DataLoader workers
+        n_proteins: Limit number of proteins for debugging
+        use_training_subset: Use only proteins in training data
 
     Returns:
         (train_loader, val_loader, test_loader, protein_emb)
@@ -353,7 +354,7 @@ def create_v2_dataloaders(
     project_root = Path(project_root)
     training_dir = project_root / "data/processed/training"
 
-    # データセット作成
+    # Create datasets
     train_dataset = CDTv2Dataset(
         training_dir / "gasperini_train.h5",
         project_root=project_root,
@@ -373,10 +374,10 @@ def create_v2_dataloaders(
         use_training_subset=use_training_subset,
     )
 
-    # 全タンパク質埋め込み（共有）
+    # Full protein embeddings (shared)
     protein_emb = train_dataset.get_protein_embeddings()
 
-    # DataLoader作成
+    # Create DataLoaders
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -405,33 +406,33 @@ def create_v2_dataloaders(
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("CDT v2 Dataset テスト")
+    print("CDT v2 Dataset Test")
     print("=" * 60)
 
-    # プロジェクトルート
+    # Project root
     project_root = Path(__file__).parent.parent.parent
 
-    # データセット作成（タンパク質数を100に制限してテスト）
-    print("\n【データセット作成】")
+    # Create dataset (limit proteins to 100 for testing)
+    print("\n[Dataset Creation]")
     dataset = CDTv2Dataset(
         project_root / "data/processed/training/gasperini_train.h5",
         project_root=project_root,
-        n_proteins=100  # テスト用
+        n_proteins=100  # For testing
     )
-    print(f"サンプル数: {len(dataset)}")
+    print(f"Number of samples: {len(dataset)}")
     print(f"Positive: {dataset.n_positive}")
     print(f"Negative: {dataset.n_negative}")
-    print(f"次元: {dataset.get_dims()}")
+    print(f"Dimensions: {dataset.get_dims()}")
 
-    # Beta値の統計
-    print("\n【Beta値統計（回帰用）】")
+    # Beta value statistics
+    print("\n[Beta Value Statistics (for regression)]")
     beta_vals = dataset.beta_values
-    print(f"Beta値: min={beta_vals.min():.4f}, max={beta_vals.max():.4f}")
-    print(f"        mean={beta_vals.mean():.4f}, std={beta_vals.std():.4f}")
-    print(f"        非ゼロ: {(beta_vals != 0).sum()}/{len(beta_vals)}")
+    print(f"Beta values: min={beta_vals.min():.4f}, max={beta_vals.max():.4f}")
+    print(f"            mean={beta_vals.mean():.4f}, std={beta_vals.std():.4f}")
+    print(f"            non-zero: {(beta_vals != 0).sum()}/{len(beta_vals)}")
 
-    # 1サンプル取得
-    print("\n【1サンプル取得】")
+    # Get one sample
+    print("\n[Get One Sample]")
     sample = dataset[0]
     print(f"DNA embedding shape: {sample['dna_emb'].shape}")
     print(f"RNA embedding shape: {sample['rna_emb'].shape}")
@@ -439,25 +440,25 @@ if __name__ == "__main__":
     print(f"Label: {sample['label']}")
     print(f"Beta: {sample['beta']}")
 
-    # 全タンパク質埋め込み
-    print("\n【タンパク質埋め込み】")
+    # Full protein embeddings
+    print("\n[Protein Embeddings]")
     protein_emb = dataset.get_protein_embeddings()
     print(f"Protein embeddings shape: {protein_emb.shape}")
 
-    # DataLoader作成
-    print("\n【DataLoader作成】")
+    # Create DataLoader
+    print("\n[DataLoader Creation]")
     train_loader, val_loader, test_loader, protein_emb = create_v2_dataloaders(
         project_root=project_root,
         batch_size=8,
-        n_proteins=100  # テスト用
+        n_proteins=100  # For testing
     )
     print(f"Train batches: {len(train_loader)}")
     print(f"Val batches: {len(val_loader)}")
     print(f"Test batches: {len(test_loader)}")
     print(f"Protein embeddings: {protein_emb.shape}")
 
-    # 1バッチ取得
-    print("\n【1バッチ取得】")
+    # Get one batch
+    print("\n[Get One Batch]")
     batch = next(iter(train_loader))
     print(f"DNA embedding batch shape: {batch['dna_emb'].shape}")
     print(f"RNA embedding batch shape: {batch['rna_emb'].shape}")
@@ -465,6 +466,6 @@ if __name__ == "__main__":
     print(f"Labels: {batch['labels']}")
     print(f"Betas: {batch['betas']}")
 
-    # クリーンアップ
+    # Cleanup
     dataset.close()
-    print("\n✓ テスト完了!")
+    print("\n[OK] Test complete!")

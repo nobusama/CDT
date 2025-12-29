@@ -1,14 +1,14 @@
 """
-CDT POC Model (事前計算済み埋め込み用)
+CDT POC Model (for pre-computed embeddings)
 
-事前計算済みのEnformer, ESM-2, scGPT埋め込みを使用して
-エンハンサー→遺伝子の調節関係を予測する
+Predicts enhancer-gene regulatory relationships using
+pre-computed Enformer, ESM-2, and scGPT embeddings
 
-アーキテクチャ（既存CDTモデルに準拠）:
-1. 各モダリティの埋め込みを共通次元に投影
-2. Self-Attention（各モダリティ内の処理）
-3. Cross-Attention（モダリティ間の相互作用）
-4. VCE（統合）+ 分類ヘッド
+Architecture (following existing CDT model):
+1. Project each modality's embeddings to common dimension
+2. Self-Attention (intra-modality processing)
+3. Cross-Attention (inter-modality interactions)
+4. VCE (integration) + classification head
 """
 
 import torch
@@ -18,7 +18,7 @@ from typing import Dict, Optional, Tuple
 
 
 class EmbeddingProjector(nn.Module):
-    """各モダリティの埋め込みを共通次元に投影"""
+    """Project each modality's embeddings to common dimension"""
 
     def __init__(self, input_dim: int, output_dim: int, dropout: float = 0.1):
         super().__init__()
@@ -35,10 +35,10 @@ class EmbeddingProjector(nn.Module):
 
 class SelfAttentionBlock(nn.Module):
     """
-    Self-Attention Block（各モダリティ内の処理）
+    Self-Attention Block (intra-modality processing)
 
-    事前計算済み埋め込みは1ベクトルだが、
-    Self-Attentionの構造を保持するためシーケンス長1として処理
+    Pre-computed embeddings are single vectors,
+    but processed as sequence length 1 to maintain Self-Attention structure
     """
 
     def __init__(self, d_model: int, nhead: int = 4, dropout: float = 0.1):
@@ -69,12 +69,12 @@ class SelfAttentionBlock(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: [batch, d_model] または [batch, seq_len, d_model]
+            x: [batch, d_model] or [batch, seq_len, d_model]
 
         Returns:
-            [batch, d_model] または [batch, seq_len, d_model]
+            [batch, d_model] or [batch, seq_len, d_model]
         """
-        # 入力が2次元の場合、3次元に拡張
+        # Expand to 3D if input is 2D
         squeeze_output = False
         if x.dim() == 2:
             x = x.unsqueeze(1)  # [batch, 1, d_model]
@@ -96,9 +96,9 @@ class SelfAttentionBlock(nn.Module):
 
 class CrossAttentionBlock(nn.Module):
     """
-    Cross-Attention Block（モダリティ間の相互作用）
+    Cross-Attention Block (inter-modality interactions)
 
-    query_modality が key_modality の情報を参照する
+    query_modality references key_modality's information
     """
 
     def __init__(self, d_model: int, nhead: int = 4, dropout: float = 0.1):
@@ -142,7 +142,7 @@ class CrossAttentionBlock(nn.Module):
             output: [batch, d_model]
             attention_weights: attention weights
         """
-        # 3次元に拡張
+        # Expand to 3D
         q = query.unsqueeze(1) if query.dim() == 2 else query
         k = key.unsqueeze(1) if key.dim() == 2 else key
         v = value.unsqueeze(1) if value.dim() == 2 else value
@@ -162,16 +162,16 @@ class CDTPOCModel(nn.Module):
     """
     CDT POC Model
 
-    既存のCDTモデル構造に準拠:
-    1. Projection（次元統一）
-    2. Self-Attention（各モダリティ内）
-    3. Cross-Attention（モダリティ間）
+    Following existing CDT model structure:
+    1. Projection (dimension unification)
+    2. Self-Attention (intra-modality)
+    3. Cross-Attention (inter-modality)
     4. VCE + Classification
 
-    事前計算済み埋め込みを使用:
-    - DNA: Enformer (3072次元)
-    - Protein: ESM-2 (1280次元)
-    - Cell: scGPT (512次元)
+    Uses pre-computed embeddings:
+    - DNA: Enformer (3072 dimensions)
+    - Protein: ESM-2 (1280 dimensions)
+    - Cell: scGPT (512 dimensions)
     """
 
     def __init__(
@@ -188,33 +188,33 @@ class CDTPOCModel(nn.Module):
         self.hidden_dim = hidden_dim
 
         # ========================================
-        # 1. Projectors（次元統一）
+        # 1. Projectors (dimension unification)
         # ========================================
         self.dna_projector = EmbeddingProjector(dna_dim, hidden_dim, dropout)
         self.protein_projector = EmbeddingProjector(protein_dim, hidden_dim, dropout)
         self.cell_projector = EmbeddingProjector(cell_dim, hidden_dim, dropout)
 
         # ========================================
-        # 2. Self-Attention（各モダリティ内）
+        # 2. Self-Attention (intra-modality)
         # ========================================
         self.dna_self_attn = SelfAttentionBlock(hidden_dim, nhead, dropout)
         self.protein_self_attn = SelfAttentionBlock(hidden_dim, nhead, dropout)
         self.cell_self_attn = SelfAttentionBlock(hidden_dim, nhead, dropout)
 
         # ========================================
-        # 3. Cross-Attention（モダリティ間）- 生物学的循環
+        # 3. Cross-Attention (inter-modality) - biological cycle
         # ========================================
-        # DNA → Cell: CellがDNAの情報を参照（転写）
+        # DNA -> Cell: Cell references DNA information (transcription)
         self.dna_to_cell = CrossAttentionBlock(hidden_dim, nhead, dropout)
 
-        # Cell → Protein: ProteinがCellの情報を参照（翻訳）
+        # Cell -> Protein: Protein references Cell information (translation)
         self.cell_to_protein = CrossAttentionBlock(hidden_dim, nhead, dropout)
 
-        # Protein → DNA: DNAがProteinの情報を参照（TFフィードバック）
+        # Protein -> DNA: DNA references Protein information (TF feedback)
         self.protein_to_dna = CrossAttentionBlock(hidden_dim, nhead, dropout)
 
         # ========================================
-        # 4. VCE（統合）+ Classification
+        # 4. VCE (integration) + Classification
         # ========================================
         self.vce_fusion = nn.Sequential(
             nn.Linear(hidden_dim * 3, hidden_dim * 2),
@@ -224,7 +224,7 @@ class CDTPOCModel(nn.Module):
             nn.LayerNorm(hidden_dim)
         )
 
-        # 二値分類ヘッド
+        # Binary classification head
         self.classifier = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.GELU(),
@@ -241,42 +241,42 @@ class CDTPOCModel(nn.Module):
     ) -> torch.Tensor | Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         Args:
-            dna_emb: [batch, 3072] Enformer埋め込み
-            protein_emb: [batch, 1280] ESM-2埋め込み
-            cell_emb: [batch, 512] scGPT埋め込み
-            return_attention: Attention weightsを返すか
+            dna_emb: [batch, 3072] Enformer embeddings
+            protein_emb: [batch, 1280] ESM-2 embeddings
+            cell_emb: [batch, 512] scGPT embeddings
+            return_attention: whether to return attention weights
 
         Returns:
-            logits: [batch, 1] 予測ロジット
+            logits: [batch, 1] prediction logits
         """
         # ========================================
-        # Step 1: Projection（次元統一）
+        # Step 1: Projection (dimension unification)
         # ========================================
         dna = self.dna_projector(dna_emb)          # [batch, hidden_dim]
         protein = self.protein_projector(protein_emb)  # [batch, hidden_dim]
         cell = self.cell_projector(cell_emb)       # [batch, hidden_dim]
 
         # ========================================
-        # Step 2: Self-Attention（各モダリティ内）
+        # Step 2: Self-Attention (intra-modality)
         # ========================================
         dna = self.dna_self_attn(dna)              # [batch, hidden_dim]
         protein = self.protein_self_attn(protein)  # [batch, hidden_dim]
         cell = self.cell_self_attn(cell)           # [batch, hidden_dim]
 
         # ========================================
-        # Step 3: Cross-Attention（モダリティ間）- 生物学的循環
+        # Step 3: Cross-Attention (inter-modality) - biological cycle
         # ========================================
-        # DNA → Cell: CellがDNAを参照（転写）
+        # DNA -> Cell: Cell references DNA (transcription)
         cell_fused, dna_to_cell_attn = self.dna_to_cell(cell, dna, dna)
 
-        # Cell → Protein: ProteinがCellを参照（翻訳）
+        # Cell -> Protein: Protein references Cell (translation)
         protein_fused, cell_to_prot_attn = self.cell_to_protein(protein, cell_fused, cell_fused)
 
-        # Protein → DNA: DNAがProteinを参照（TFフィードバック）
+        # Protein -> DNA: DNA references Protein (TF feedback)
         dna_fused, prot_to_dna_attn = self.protein_to_dna(dna, protein_fused, protein_fused)
 
         # ========================================
-        # Step 4: VCE（統合）+ Classification
+        # Step 4: VCE (integration) + Classification
         # ========================================
         # Concatenate
         concat = torch.cat([dna_fused, cell_fused, protein_fused], dim=1)
@@ -290,24 +290,24 @@ class CDTPOCModel(nn.Module):
 
         if return_attention:
             attention = {
-                'dna_to_cell': dna_to_cell_attn,      # 転写
-                'cell_to_protein': cell_to_prot_attn,  # 翻訳
-                'protein_to_dna': prot_to_dna_attn     # フィードバック
+                'dna_to_cell': dna_to_cell_attn,      # Transcription
+                'cell_to_protein': cell_to_prot_attn,  # Translation
+                'protein_to_dna': prot_to_dna_attn     # Feedback
             }
             return logits, attention
 
         return logits
 
     def get_num_params(self) -> int:
-        """学習可能パラメータ数を返す"""
+        """Return number of trainable parameters"""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
 class BaselineModel(nn.Module):
     """
-    ベースラインモデル（Self/Cross-Attentionなし）
+    Baseline model (without Self/Cross-Attention)
 
-    単純なConcatenation + MLPで比較用
+    Simple Concatenation + MLP for comparison
     """
 
     def __init__(
@@ -342,7 +342,7 @@ class BaselineModel(nn.Module):
         cell_emb: torch.Tensor,
         return_attention: bool = False
     ) -> torch.Tensor:
-        # 単純にConcatenate
+        # Simply Concatenate
         x = torch.cat([dna_emb, protein_emb, cell_emb], dim=1)
         logits = self.mlp(x)
 
@@ -356,10 +356,10 @@ class BaselineModel(nn.Module):
 
 class DNAOnlyModel(nn.Module):
     """
-    DNA-only Baseline (seq2cells的アプローチ)
+    DNA-only Baseline (seq2cells-like approach)
 
-    Enformer埋め込みのみを使用して予測
-    実世界での標準的アプローチとの比較用
+    Predicts using only Enformer embeddings
+    For comparison with standard real-world approaches
     """
 
     def __init__(
@@ -391,8 +391,8 @@ class DNAOnlyModel(nn.Module):
         return_attention: bool = False
     ) -> torch.Tensor:
         """
-        DNA埋め込みのみを使用（protein_emb, cell_embは無視）
-        他のモデルと同じインターフェースを維持
+        Uses only DNA embeddings (protein_emb, cell_emb are ignored)
+        Maintains same interface as other models
         """
         logits = self.mlp(dna_emb)
 
@@ -406,44 +406,44 @@ class DNAOnlyModel(nn.Module):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("CDT POC Model テスト")
+    print("CDT POC Model Test")
     print("=" * 60)
 
     batch_size = 8
 
-    # ダミーデータ
+    # Dummy data
     dna_emb = torch.randn(batch_size, 3072)
     protein_emb = torch.randn(batch_size, 1280)
     cell_emb = torch.randn(batch_size, 512)
 
     # CDT POC Model
-    print("\n【CDT POC Model】")
-    print("  構造: Projection → Self-Attention → Cross-Attention → VCE → Classifier")
+    print("\n[CDT POC Model]")
+    print("  Structure: Projection -> Self-Attention -> Cross-Attention -> VCE -> Classifier")
     model = CDTPOCModel()
-    print(f"  パラメータ数: {model.get_num_params():,}")
+    print(f"  Parameter count: {model.get_num_params():,}")
 
     logits = model(dna_emb, protein_emb, cell_emb)
-    print(f"  出力形状: {logits.shape}")
+    print(f"  Output shape: {logits.shape}")
 
     logits, attn = model(dna_emb, protein_emb, cell_emb, return_attention=True)
     print(f"  Attention keys: {list(attn.keys())}")
 
     # Baseline Model (Concat MLP)
-    print("\n【Baseline Model (3-modal Concatenation)】")
+    print("\n[Baseline Model (3-modal Concatenation)]")
     baseline = BaselineModel()
-    print(f"  パラメータ数: {baseline.get_num_params():,}")
+    print(f"  Parameter count: {baseline.get_num_params():,}")
 
     logits = baseline(dna_emb, protein_emb, cell_emb)
-    print(f"  出力形状: {logits.shape}")
+    print(f"  Output shape: {logits.shape}")
 
     # DNA-only Model (seq2cells-like)
-    print("\n【DNA-only Model (seq2cells-like approach)】")
+    print("\n[DNA-only Model (seq2cells-like approach)]")
     dna_only = DNAOnlyModel()
-    print(f"  パラメータ数: {dna_only.get_num_params():,}")
+    print(f"  Parameter count: {dna_only.get_num_params():,}")
 
     logits = dna_only(dna_emb, protein_emb, cell_emb)
-    print(f"  出力形状: {logits.shape}")
+    print(f"  Output shape: {logits.shape}")
 
     print("\n" + "=" * 60)
-    print("✓ テスト完了!")
+    print("Test complete!")
     print("=" * 60)

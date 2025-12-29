@@ -2,19 +2,19 @@
 """
 CDT v2 Training Script
 
-v2アーキテクチャ:
+v2 Architecture:
 - DNA: [batch, 896, 3072] - Enformer sequence-level
-- Protein: [n_proteins, 768] - 全プロテオーム (バッチ間で共有)
-- RNA: [batch, n_genes, 512] - サンプルごとの遺伝子発現
-- 出力: [batch, n_proteins] - 各(エンハンサー, タンパク質)ペアの結合予測
+- Protein: [n_proteins, 768] - Full proteome (shared across batches)
+- RNA: [batch, n_genes, 512] - Gene expression per sample
+- Output: [batch, n_proteins] - Binding prediction for each (enhancer, protein) pair
 
-循環Cross-Attention: DNA → RNA → Protein → DNA
+Cyclic Cross-Attention: DNA -> RNA -> Protein -> DNA
 
 Usage:
-    # テスト用（タンパク質100個に制限）
+    # For testing (limited to 100 proteins)
     python scripts/train_cdt_v2.py --n_proteins 100 --epochs 3 --batch_size 4
 
-    # フル学習（全タンパク質20420個）
+    # Full training (all 20420 proteins)
     python scripts/train_cdt_v2.py --epochs 20 --batch_size 8
 """
 
@@ -82,7 +82,7 @@ def evaluate(model, dataloader, protein_emb, device, criterion):
             # Forward pass
             logits = model(dna, protein_emb, rna)  # [batch, n_proteins]
 
-            # 各サンプルのターゲットタンパク質に対する予測を取得
+            # Get predictions for target protein of each sample
             batch_size = logits.size(0)
             target_logits = []
             valid_mask = []
@@ -99,7 +99,7 @@ def evaluate(model, dataloader, protein_emb, device, criterion):
             target_logits = torch.stack(target_logits)
             valid_mask = torch.tensor(valid_mask, device=device)
 
-            # Loss (有効なサンプルのみ)
+            # Loss (valid samples only)
             if valid_mask.any():
                 valid_logits = target_logits[valid_mask]
                 valid_labels = labels[valid_mask]
@@ -159,7 +159,7 @@ def train_epoch(model, dataloader, protein_emb, device, optimizer, criterion, ep
         # Forward pass
         logits = model(dna, protein_emb, rna)  # [batch, n_proteins]
 
-        # 各サンプルのターゲットタンパク質に対する予測を取得
+        # Get predictions for target protein of each sample
         batch_size = logits.size(0)
         target_logits = []
         valid_mask = []
@@ -170,14 +170,14 @@ def train_epoch(model, dataloader, protein_emb, device, optimizer, criterion, ep
                 target_logits.append(logits[i, prot_idx])
                 valid_mask.append(True)
             else:
-                # タンパク質が制限範囲外 - ダミー値
+                # Protein outside limited range - dummy value
                 target_logits.append(torch.tensor(0.0, device=device, requires_grad=True))
                 valid_mask.append(False)
 
         target_logits = torch.stack(target_logits)
         valid_mask = torch.tensor(valid_mask, device=device)
 
-        # Loss (有効なサンプルのみ)
+        # Loss (valid samples only)
         if valid_mask.any():
             valid_logits = target_logits[valid_mask]
             valid_labels = labels[valid_mask]

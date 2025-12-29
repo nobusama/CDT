@@ -1,8 +1,8 @@
 """
-CDT POC用 Embedding Dataset
+CDT POC Embedding Dataset
 
-事前計算済みの埋め込み（Enformer, ESM-2, scGPT）を使用するDataset
-Gasperini CRISPRi screenデータで学習するためのクラス
+Dataset using pre-computed embeddings (Enformer, ESM-2, scGPT)
+Class for training on Gasperini CRISPRi screen data
 """
 
 import torch
@@ -15,12 +15,12 @@ from typing import Dict, Optional, Tuple
 
 class CDTEmbeddingDataset(Dataset):
     """
-    CDT POC用のPyTorchデータセット
+    PyTorch Dataset for CDT POC
 
-    事前計算済み埋め込みを使用:
-    - DNA: Enformer (3072次元)
-    - Protein: ESM-2 (1280次元)
-    - Cell: scGPT K562平均 (512次元) - 全サンプル共通
+    Uses pre-computed embeddings:
+    - DNA: Enformer (3072 dimensions)
+    - Protein: ESM-2 (1280 dimensions)
+    - Cell: scGPT K562 average (512 dimensions) - shared across all samples
 
     Example:
         >>> dataset = CDTEmbeddingDataset('data/processed/training/gasperini_train.h5')
@@ -38,18 +38,18 @@ class CDTEmbeddingDataset(Dataset):
     ):
         """
         Args:
-            training_data_path: 学習データ(HDF5)のパス
-            enformer_path: Enformer埋め込みのパス
-            esm2_path: ESM-2埋め込みのパス
-            scgpt_avg_path: K562平均scGPT埋め込みのパス
-            project_root: プロジェクトルート（パスの解決用）
+            training_data_path: Path to training data (HDF5)
+            enformer_path: Path to Enformer embeddings
+            esm2_path: Path to ESM-2 embeddings
+            scgpt_avg_path: Path to K562 average scGPT embedding
+            project_root: Project root (for path resolution)
         """
         if project_root is None:
             project_root = Path(__file__).parent.parent.parent
 
         self.project_root = Path(project_root)
 
-        # デフォルトパス
+        # Default paths
         if enformer_path is None:
             enformer_path = self.project_root / "data/raw/enformer/preprocessing/precomputed_embeddings/enformer_gencode_v41_protein_coding_canonical_tss_hg38_nostitch_addbin_1_emb_mean_tar_sum_aug_0.h5"
         if esm2_path is None:
@@ -62,17 +62,17 @@ class CDTEmbeddingDataset(Dataset):
         self.esm2_path = Path(esm2_path)
         self.scgpt_avg_path = Path(scgpt_avg_path)
 
-        # 学習データ読み込み
+        # Load training data
         self._load_training_data()
 
-        # 埋め込みファイルを開く（遅延読み込み用にファイルハンドルを保持）
+        # Open embedding files (keep file handles for lazy loading)
         self._load_embedding_files()
 
-        # scGPT K562平均埋め込みを読み込み（全サンプル共通）
+        # Load scGPT K562 average embedding (shared across all samples)
         self._load_scgpt_avg()
 
     def _load_training_data(self):
-        """学習データを読み込み"""
+        """Load training data"""
         with h5py.File(self.training_data_path, 'r') as f:
             self.enformer_idx = f['enformer_idx'][:]
             self.esm2_idx = f['esm2_idx'][:]
@@ -82,24 +82,24 @@ class CDTEmbeddingDataset(Dataset):
             self.n_negative = self.n_samples - self.n_positive
 
     def _load_embedding_files(self):
-        """埋め込みファイルを開く"""
-        # Enformer埋め込み
+        """Open embedding files"""
+        # Enformer embeddings
         self.enformer_file = h5py.File(self.enformer_path, 'r')
         self.enformer_emb = self.enformer_file['emb/block0_values']
         self.enformer_dim = self.enformer_emb.shape[1]
 
-        # ESM-2埋め込み
+        # ESM-2 embeddings
         self.esm2_file = h5py.File(self.esm2_path, 'r')
         self.esm2_emb = self.esm2_file['embeddings']
         self.esm2_dim = self.esm2_emb.shape[1]
 
     def _load_scgpt_avg(self):
-        """scGPT K562平均埋め込みを読み込み"""
+        """Load scGPT K562 average embedding"""
         if self.scgpt_avg_path.exists():
             self.scgpt_avg = np.load(self.scgpt_avg_path).astype(np.float32)
             self.scgpt_dim = len(self.scgpt_avg)
         else:
-            # まだ生成されていない場合はダミー
+            # Use dummy if not yet generated
             print(f"Warning: scGPT avg not found at {self.scgpt_avg_path}, using zeros")
             self.scgpt_avg = np.zeros(512, dtype=np.float32)
             self.scgpt_dim = 512
@@ -109,26 +109,26 @@ class CDTEmbeddingDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
-        指定インデックスのサンプルを取得
+        Get sample at specified index
 
         Returns:
             dict: {
-                'dna_emb': Enformer埋め込み (3072,),
-                'protein_emb': ESM-2埋め込み (1280,),
-                'cell_emb': scGPT K562平均 (512,),
+                'dna_emb': Enformer embedding (3072,),
+                'protein_emb': ESM-2 embedding (1280,),
+                'cell_emb': scGPT K562 average (512,),
                 'label': 0 or 1
             }
         """
-        # インデックス取得
+        # Get indices
         enf_idx = int(self.enformer_idx[idx])
         esm_idx = int(self.esm2_idx[idx])
 
-        # 埋め込み取得
+        # Get embeddings
         dna_emb = self.enformer_emb[enf_idx, :].astype(np.float32)
         protein_emb = self.esm2_emb[esm_idx, :].astype(np.float32)
-        cell_emb = self.scgpt_avg  # 全サンプル共通
+        cell_emb = self.scgpt_avg  # Shared across all samples
 
-        # ラベル
+        # Label
         label = self.labels[idx]
 
         return {
@@ -139,7 +139,7 @@ class CDTEmbeddingDataset(Dataset):
         }
 
     def get_dims(self) -> Dict[str, int]:
-        """各埋め込みの次元を返す"""
+        """Return dimensions of each embedding"""
         return {
             'dna': self.enformer_dim,
             'protein': self.esm2_dim,
@@ -147,13 +147,13 @@ class CDTEmbeddingDataset(Dataset):
         }
 
     def get_class_weights(self) -> torch.Tensor:
-        """クラス不均衡対策用の重みを計算"""
-        # Negative / Positive の比率を重みとして使用
+        """Compute weights for class imbalance handling"""
+        # Use Negative / Positive ratio as weight
         weight_positive = self.n_negative / self.n_positive
         return torch.tensor([1.0, weight_positive], dtype=torch.float32)
 
     def close(self):
-        """ファイルハンドルを閉じる"""
+        """Close file handles"""
         try:
             if hasattr(self, 'enformer_file') and self.enformer_file:
                 self.enformer_file.close()
@@ -175,12 +175,12 @@ def create_poc_dataloaders(
     num_workers: int = 0
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
-    CDT POC用のDataLoaderを作成
+    Create DataLoaders for CDT POC
 
     Args:
-        project_root: プロジェクトルート
-        batch_size: バッチサイズ
-        num_workers: DataLoaderのワーカー数
+        project_root: Project root
+        batch_size: Batch size
+        num_workers: Number of DataLoader workers
 
     Returns:
         (train_loader, val_loader, test_loader)
@@ -191,7 +191,7 @@ def create_poc_dataloaders(
     project_root = Path(project_root)
     training_dir = project_root / "data/processed/training"
 
-    # データセット作成
+    # Create datasets
     train_dataset = CDTEmbeddingDataset(
         training_dir / "gasperini_train.h5",
         project_root=project_root
@@ -205,7 +205,7 @@ def create_poc_dataloaders(
         project_root=project_root
     )
 
-    # DataLoader作成
+    # Create DataLoaders
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -231,34 +231,34 @@ def create_poc_dataloaders(
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("CDTEmbeddingDataset テスト")
+    print("CDTEmbeddingDataset Test")
     print("=" * 60)
 
-    # プロジェクトルート
+    # Project root
     project_root = Path(__file__).parent.parent.parent
 
-    # データセット作成
-    print("\n【データセット作成】")
+    # Create dataset
+    print("\n[Dataset Creation]")
     dataset = CDTEmbeddingDataset(
         project_root / "data/processed/training/gasperini_train.h5",
         project_root=project_root
     )
-    print(f"サンプル数: {len(dataset)}")
+    print(f"Number of samples: {len(dataset)}")
     print(f"Positive: {dataset.n_positive}")
     print(f"Negative: {dataset.n_negative}")
-    print(f"埋め込み次元: {dataset.get_dims()}")
-    print(f"クラス重み: {dataset.get_class_weights()}")
+    print(f"Embedding dimensions: {dataset.get_dims()}")
+    print(f"Class weights: {dataset.get_class_weights()}")
 
-    # 1サンプル取得
-    print("\n【1サンプル取得】")
+    # Get one sample
+    print("\n[Get One Sample]")
     sample = dataset[0]
     print(f"DNA embedding shape: {sample['dna_emb'].shape}")
     print(f"Protein embedding shape: {sample['protein_emb'].shape}")
     print(f"Cell embedding shape: {sample['cell_emb'].shape}")
     print(f"Label: {sample['label']}")
 
-    # DataLoader作成
-    print("\n【DataLoader作成】")
+    # Create DataLoader
+    print("\n[DataLoader Creation]")
     train_loader, val_loader, test_loader = create_poc_dataloaders(
         project_root=project_root,
         batch_size=32
@@ -267,8 +267,8 @@ if __name__ == "__main__":
     print(f"Val batches: {len(val_loader)}")
     print(f"Test batches: {len(test_loader)}")
 
-    # 1バッチ取得
-    print("\n【1バッチ取得】")
+    # Get one batch
+    print("\n[Get One Batch]")
     batch = next(iter(train_loader))
     print(f"DNA embedding batch shape: {batch['dna_emb'].shape}")
     print(f"Protein embedding batch shape: {batch['protein_emb'].shape}")
@@ -276,6 +276,6 @@ if __name__ == "__main__":
     print(f"Label batch shape: {batch['label'].shape}")
     print(f"Labels: {batch['label'][:10]}")
 
-    # クリーンアップ
+    # Cleanup
     dataset.close()
-    print("\n✓ テスト完了!")
+    print("\n[OK] Test complete!")

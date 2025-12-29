@@ -1,13 +1,13 @@
 """
 DNA Tokenizer
 
-DNA配列を数値に変換するトークナイザー
+Tokenizer that converts DNA sequences to numerical values
 """
 
 
 class DNATokenizer:
     """
-    DNA配列（ATCG）をトークン（整数）に変換
+    Converts DNA sequences (ATCG) to tokens (integers)
 
     Example:
         >>> tokenizer = DNATokenizer()
@@ -19,104 +19,104 @@ class DNATokenizer:
 
     def __init__(self):
         """
-        トークナイザーの初期化
+        Initialize the tokenizer
 
-        vocab: 塩基 → 整数の辞書
+        vocab: Base -> integer dictionary
         """
-        # 語彙（vocabulary）: 各塩基に番号を割り当て
+        # Vocabulary: assign a number to each base
         self.vocab = {
-            'A': 0,  # Adenine（アデニン）
-            'T': 1,  # Thymine（チミン）
-            'C': 2,  # Cytosine（シトシン）
-            'G': 3,  # Guanine（グアニン）
-            'N': 4,  # Unknown（不明な塩基）
+            'A': 0,  # Adenine
+            'T': 1,  # Thymine
+            'C': 2,  # Cytosine
+            'G': 3,  # Guanine
+            'N': 4,  # Unknown base
         }
 
-        # 逆引き辞書: 整数 → 塩基
+        # Reverse lookup dictionary: integer -> base
         self.id_to_token = {v: k for k, v in self.vocab.items()}
 
-        # 特殊トークン
-        self.pad_token = 'N'  # パディング用
+        # Special tokens
+        self.pad_token = 'N'  # For padding
         self.pad_token_id = self.vocab[self.pad_token]
 
-        # 語彙サイズ
+        # Vocabulary size
         self.vocab_size = len(self.vocab)
 
     def encode(self, sequence):
         """
-        DNA配列を整数リストに変換
+        Convert DNA sequence to integer list
 
         Args:
-            sequence (str): DNA配列（例: "ATCGAT"）
+            sequence (str): DNA sequence (e.g., "ATCGAT")
 
         Returns:
-            list[int]: トークンIDのリスト（例: [0, 1, 2, 3, 0, 1]）
+            list[int]: List of token IDs (e.g., [0, 1, 2, 3, 0, 1])
         """
-        # 大文字に統一
+        # Convert to uppercase
         sequence = sequence.upper()
 
-        # 各塩基を整数に変換
+        # Convert each base to integer
         tokens = []
         for base in sequence:
             if base in self.vocab:
                 tokens.append(self.vocab[base])
             else:
-                # 未知の塩基は 'N' として扱う
+                # Treat unknown bases as 'N'
                 tokens.append(self.vocab['N'])
 
         return tokens
 
     def decode(self, tokens):
         """
-        整数リストをDNA配列に変換
+        Convert integer list to DNA sequence
 
         Args:
-            tokens (list[int]): トークンIDのリスト（例: [0, 1, 2, 3]）
+            tokens (list[int]): List of token IDs (e.g., [0, 1, 2, 3])
 
         Returns:
-            str: DNA配列（例: "ATCG"）
+            str: DNA sequence (e.g., "ATCG")
         """
-        # 各整数を塩基に変換
+        # Convert each integer to base
         sequence = ''.join([self.id_to_token[token_id] for token_id in tokens])
         return sequence
 
     def __len__(self):
-        """語彙サイズを返す"""
+        """Return vocabulary size"""
         return self.vocab_size
 
     def __repr__(self):
-        """トークナイザーの文字列表現"""
+        """String representation of the tokenizer"""
         return f"DNATokenizer(vocab_size={self.vocab_size})"
 
 
-# 使用例（このファイルを直接実行した時のみ動く）
+# Usage example (only runs when this file is executed directly)
 if __name__ == "__main__":
-    # トークナイザーのインスタンス作成
+    # Create tokenizer instance
     tokenizer = DNATokenizer()
 
-    print(f"トークナイザー: {tokenizer}")
-    print(f"語彙サイズ: {len(tokenizer)}")
-    print(f"語彙: {tokenizer.vocab}")
+    print(f"Tokenizer: {tokenizer}")
+    print(f"Vocabulary size: {len(tokenizer)}")
+    print(f"Vocabulary: {tokenizer.vocab}")
     print()
 
-    # テスト配列
+    # Test sequence
     dna_sequence = "ATCGATCG"
-    print(f"元の配列: {dna_sequence}")
+    print(f"Original sequence: {dna_sequence}")
 
-    # エンコード（配列 → 数値）
+    # Encode (sequence -> numbers)
     tokens = tokenizer.encode(dna_sequence)
-    print(f"トークン化: {tokens}")
+    print(f"Tokenized: {tokens}")
 
-    # デコード（数値 → 配列）
+    # Decode (numbers -> sequence)
     decoded = tokenizer.decode(tokens)
-    print(f"デコード: {decoded}")
-    print(f"一致: {dna_sequence == decoded}")
+    print(f"Decoded: {decoded}")
+    print(f"Match: {dna_sequence == decoded}")
     print()
 
-    # 未知の塩基を含む配列
-    unknown_sequence = "ATXCG"  # X は未知
-    print(f"未知の塩基を含む配列: {unknown_sequence}")
+    # Sequence with unknown base
+    unknown_sequence = "ATXCG"  # X is unknown
+    print(f"Sequence with unknown base: {unknown_sequence}")
     tokens = tokenizer.encode(unknown_sequence)
-    print(f"トークン化: {tokens}")
+    print(f"Tokenized: {tokens}")
     decoded = tokenizer.decode(tokens)
-    print(f"デコード: {decoded}")  # X → N に変換される
+    print(f"Decoded: {decoded}")  # X is converted to N

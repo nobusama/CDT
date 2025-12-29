@@ -158,7 +158,7 @@ class CDTTrainer:
             # Alignment loss (if enabled)
             alignment_loss_value = 0.0
             if self.alignment_loss_weight > 0 and 'codon_positions' in batch:
-                # Get RNA→Protein attention
+                # Get RNA->Protein attention
                 # Shape: (batch, num_heads, num_protein_tokens, num_rna_tokens)
                 rna_protein_attention = attention_maps['rna_to_protein']
 
@@ -403,7 +403,7 @@ class CDTTrainer:
                 self.best_epoch = epoch
                 patience_counter = 0
                 loss_type = "Val" if val_loss is not None else "Train"
-                print(f"  ✓ New best model! ({loss_type} Loss: {check_loss:.4f})")
+                print(f"  New best model! ({loss_type} Loss: {check_loss:.4f})")
             else:
                 patience_counter += 1
 
@@ -545,4 +545,4 @@ if __name__ == "__main__":
     print(f"  Inter-class similarity: {metrics['inter_class_similarity']:.4f}")
     print(f"  Discrimination: {metrics['discrimination']:.4f}")
 
-    print("\n✓ All tests passed!")
+    print("\nAll tests passed!")

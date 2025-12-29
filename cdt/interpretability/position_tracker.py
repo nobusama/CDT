@@ -191,7 +191,7 @@ class PositionTracker:
             yticklabels=False,
             cbar_kws={'label': 'Attention Weight'}
         )
-        axes[0].set_title(f'Token-Level Attention\n({token_attention.shape[0]} × {token_attention.shape[1]})')
+        axes[0].set_title(f'Token-Level Attention\n({token_attention.shape[0]} x {token_attention.shape[1]})')
         axes[0].set_xlabel('Key Tokens')
         axes[0].set_ylabel('Query Tokens')
 
@@ -204,7 +204,7 @@ class PositionTracker:
             yticklabels=False,
             cbar_kws={'label': 'Attention Weight'}
         )
-        axes[1].set_title(f'Nucleotide-Level Attention\n({nucleotide_attention.shape[0]} × {nucleotide_attention.shape[1]})')
+        axes[1].set_title(f'Nucleotide-Level Attention\n({nucleotide_attention.shape[0]} x {nucleotide_attention.shape[1]})')
         axes[1].set_xlabel('Key Positions')
         axes[1].set_ylabel('Query Positions')
 
@@ -284,14 +284,14 @@ def test_position_tracker():
     print("Test 1: Token to position mapping")
     for token_idx in range(5):
         positions = tracker.map_token_to_positions(token_idx)
-        print(f"  Token {token_idx} → positions {positions}")
+        print(f"  Token {token_idx} -> positions {positions}")
     print()
 
     # Test 2: Calculate sequence length
     print("Test 2: Calculate sequence length")
     for num_tokens in [10, 20, 30]:
         seq_len = tracker.calculate_nucleotide_length(num_tokens)
-        print(f"  {num_tokens} tokens → {seq_len} nucleotides")
+        print(f"  {num_tokens} tokens -> {seq_len} nucleotides")
     print()
 
     # Test 3: Aggregate attention

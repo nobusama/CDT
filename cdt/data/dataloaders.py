@@ -1,7 +1,7 @@
 """
 DataLoader Utilities for CDT
 
-DataLoaderの作成とバッチ処理のユーティリティ
+Utilities for creating DataLoaders and batch processing
 """
 
 import torch
@@ -204,4 +204,4 @@ if __name__ == "__main__":
     print(f"Total samples in 3 batches: {len(all_gene_ids)}")
     print(f"Unique genes in 3 batches: {len(set(all_gene_ids))}")
 
-    print("\n✓ All tests passed!")
+    print("\n[OK] All tests passed!")

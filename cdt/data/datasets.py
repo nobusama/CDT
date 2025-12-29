@@ -1,7 +1,7 @@
 """
 CDT Dataset Classes
 
-ダミーデータセットと実データセット用のクラス
+Classes for dummy datasets and real datasets
 """
 
 import random
@@ -14,17 +14,17 @@ class DummyCDTDataset(Dataset):
     """
     Dummy Dataset for CDT Training
 
-    Contrastive learningのためのダミーデータセットを生成します。
-    各遺伝子から複数のサンプルを生成し、同じ遺伝子からのサンプルを
-    positive pairとして扱います。
+    Generates a dummy dataset for contrastive learning.
+    Generates multiple samples from each gene, treating samples
+    from the same gene as positive pairs.
 
     Args:
-        num_samples: 生成するサンプル数
-        samples_per_gene: 1遺伝子あたりのサンプル数（contrastive learning用）
-        dna_length: DNA配列の長さ
-        rna_length: RNA配列の長さ
-        protein_length: タンパク質配列の長さ
-        seed: 乱数シード
+        num_samples: Number of samples to generate
+        samples_per_gene: Samples per gene (for contrastive learning)
+        dna_length: DNA sequence length
+        rna_length: RNA sequence length
+        protein_length: Protein sequence length
+        seed: Random seed
 
     Returns:
         dict: {
@@ -42,9 +42,9 @@ class DummyCDTDataset(Dataset):
         'ATGCGATCGATCG...'
 
     Note:
-        - samples_per_gene=4の場合、各遺伝子から4つのサンプルを生成
-        - 同じgene_idを持つサンプルがpositive pair
-        - InfoNCE lossで使用
+        - With samples_per_gene=4, generates 4 samples from each gene
+        - Samples with the same gene_id form positive pairs
+        - Used with InfoNCE loss
     """
 
     def __init__(
@@ -238,8 +238,8 @@ def collate_fn(batch: List[Dict]) -> Dict[str, any]:
     """
     Custom collate function for DataLoader
 
-    CDTモデルは内部でtokenizationを行うため、
-    sequencesはそのままリストとして返す。
+    Since the CDT model performs tokenization internally,
+    sequences are returned as lists without modification.
 
     Args:
         batch: List of samples from dataset
@@ -341,4 +341,4 @@ if __name__ == "__main__":
     print(f"Gene IDs shape: {batch['gene_ids'].shape}")
     print(f"Gene IDs: {batch['gene_ids']}")
 
-    print("\n✓ All tests passed!")
+    print("\n[OK] All tests passed!")

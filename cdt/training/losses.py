@@ -17,17 +17,17 @@ def infonce_loss(
     """
     InfoNCE (Noise Contrastive Estimation) Loss
 
-    同じラベルを持つサンプル間の類似度を最大化し、
-    異なるラベルを持つサンプル間の類似度を最小化する。
+    Maximizes similarity between samples with the same label and
+    minimizes similarity between samples with different labels.
 
     Args:
-        embeddings: [batch_size, d_model] モデル出力の埋め込み
-        labels: [batch_size] サンプルのラベル（同じ遺伝子には同じラベル）
-        temperature: スケーリングパラメータ（小さいほど鋭い分布）
+        embeddings: [batch_size, d_model] Model output embeddings
+        labels: [batch_size] Sample labels (same gene gets same label)
+        temperature: Scaling parameter (smaller = sharper distribution)
         reduction: 'mean' or 'sum' or 'none'
 
     Returns:
-        loss: スカラー（reduction='mean'の場合）
+        loss: Scalar (when reduction='mean')
 
     Example:
         >>> embeddings = torch.randn(16, 768)  # batch=16, d_model=768
@@ -37,16 +37,16 @@ def infonce_loss(
         tensor(2.7183)
 
     Note:
-        - Positive pairs: 同じラベルを持つサンプルペア
-        - Negative pairs: 異なるラベルを持つサンプルペア
-        - Temperature小: より厳しい分類（sharp distribution）
-        - Temperature大: より緩い分類（smooth distribution）
+        - Positive pairs: Sample pairs with the same label
+        - Negative pairs: Sample pairs with different labels
+        - Small temperature: Stricter classification (sharp distribution)
+        - Large temperature: More lenient classification (smooth distribution)
     """
     batch_size = embeddings.size(0)
     device = embeddings.device
 
     # Normalize embeddings to unit sphere
-    # これによりコサイン類似度が内積で計算できる
+    # This allows cosine similarity to be computed via dot product
     embeddings = F.normalize(embeddings, p=2, dim=1)
 
     # Compute similarity matrix: [batch, batch]
@@ -58,19 +58,19 @@ def infonce_loss(
     mask = torch.eq(labels, labels.T).float()  # [batch, batch]
 
     # Remove diagonal (self-similarity)
-    # 自分自身とのpositive pairは除外
+    # Exclude positive pairs with self
     logits_mask = torch.ones_like(mask) - torch.eye(batch_size, device=device)
     mask = mask * logits_mask
 
     # Compute log probability
-    # log P(positive | anchor) = log( exp(sim_pos) / Σ exp(sim_all) )
+    # log P(positive | anchor) = log( exp(sim_pos) / sum exp(sim_all) )
     exp_logits = torch.exp(similarity_matrix) * logits_mask
     log_prob = similarity_matrix - torch.log(exp_logits.sum(dim=1, keepdim=True))
 
     # Mean of log-likelihood over positive pairs
-    # 各サンプルについて、positive pairの平均log確率を計算
+    # For each sample, compute average log probability of positive pairs
     mask_sum = mask.sum(dim=1)
-    mask_sum = torch.clamp(mask_sum, min=1.0)  # ゼロ除算を防ぐ
+    mask_sum = torch.clamp(mask_sum, min=1.0)  # Prevent division by zero
 
     mean_log_prob_pos = (mask * log_prob).sum(dim=1) / mask_sum
 
@@ -89,10 +89,10 @@ class ContrastiveLoss(nn.Module):
     """
     Contrastive Loss Module
 
-    InfoNCE lossのnn.Moduleラッパー
+    nn.Module wrapper for InfoNCE loss
 
     Args:
-        temperature: スケーリングパラメータ
+        temperature: Scaling parameter
         reduction: 'mean' or 'sum' or 'none'
 
     Example:
@@ -120,7 +120,7 @@ class ContrastiveLoss(nn.Module):
             labels: [batch_size]
 
         Returns:
-            loss: スカラー or [batch_size]
+            loss: Scalar or [batch_size]
         """
         return infonce_loss(
             embeddings,
@@ -138,19 +138,19 @@ def triplet_loss(
     reduction: str = 'mean'
 ) -> torch.Tensor:
     """
-    Triplet Loss（参考実装）
+    Triplet Loss (reference implementation)
 
-    将来的に使用する可能性があるため実装
+    Implemented for potential future use
 
     Args:
-        anchor: [batch, d_model] アンカー埋め込み
-        positive: [batch, d_model] positive sample埋め込み
-        negative: [batch, d_model] negative sample埋め込み
-        margin: マージンパラメータ
+        anchor: [batch, d_model] Anchor embeddings
+        positive: [batch, d_model] Positive sample embeddings
+        negative: [batch, d_model] Negative sample embeddings
+        margin: Margin parameter
         reduction: 'mean' or 'sum' or 'none'
 
     Returns:
-        loss: スカラー
+        loss: Scalar
 
     Formula:
         L = max(0, ||anchor - positive||^2 - ||anchor - negative||^2 + margin)
@@ -170,7 +170,7 @@ def triplet_loss(
 
 class CodonAlignmentLoss(nn.Module):
     """
-    Codon Alignment Loss for RNA→Protein attention
+    Codon Alignment Loss for RNA->Protein attention
 
     Encourages each amino acid to attend to its corresponding codon (3 nucleotides).
 
@@ -200,7 +200,7 @@ class CodonAlignmentLoss(nn.Module):
 
         Args:
             attention_weights: (batch, num_aa, num_rna_tokens)
-                RNA→Protein cross-attention weights
+                RNA->Protein cross-attention weights
             codon_positions: (batch, num_aa, 3)
                 For each amino acid, the 3 RNA positions of its codon
             protein_mask: (batch, num_aa)
@@ -526,7 +526,7 @@ if __name__ == "__main__":
 
     # Test that both give same result
     assert torch.allclose(loss, loss2), "Losses should be equal"
-    print("✓ Tests passed!")
+    print("Tests passed!")
 
     # Test with different temperatures
     print("\nTemperature sensitivity:")
@@ -543,4 +543,4 @@ if __name__ == "__main__":
 
     codon_loss = codon_loss_fn(attention, codon_positions, protein_mask)
     print(f"Codon Alignment Loss: {codon_loss.item():.4f}")
-    print("✓ Codon Alignment Loss test passed!")
+    print("Codon Alignment Loss test passed!")

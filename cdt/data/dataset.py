@@ -1,8 +1,8 @@
 """
 CDT Dataset
 
-PyTorchのDatasetクラス
-合成データをトークン化してモデルに渡す
+PyTorch Dataset class
+Tokenizes synthetic data and passes it to the model
 """
 
 import torch
@@ -16,9 +16,9 @@ from cdt.tokenizers.protein_tokenizer import ProteinTokenizer
 
 class CDTDataset(Dataset):
     """
-    CDTモデル用のPyTorchデータセット
+    PyTorch Dataset for CDT model
 
-    合成データを生成し、トークン化してTensorに変換
+    Generates synthetic data, tokenizes it, and converts to Tensors
 
     Example:
         >>> dataset = CDTDataset(num_samples=100)
@@ -35,23 +35,23 @@ class CDTDataset(Dataset):
         seed: int = None
     ):
         """
-        データセットの初期化
+        Initialize the dataset
 
         Args:
-            num_samples: 生成するサンプル数
-            min_length: DNA配列の最小長（塩基数）
-            max_length: DNA配列の最大長（塩基数）
-            seed: 乱数シード（再現性のため）
+            num_samples: Number of samples to generate
+            min_length: Minimum DNA sequence length (in nucleotides)
+            max_length: Maximum DNA sequence length (in nucleotides)
+            seed: Random seed (for reproducibility)
         """
-        # トークナイザーの初期化
+        # Initialize tokenizers
         self.dna_tokenizer = DNATokenizer()
         self.rna_tokenizer = RNATokenizer()
         self.protein_tokenizer = ProteinTokenizer()
 
-        # データ生成器の初期化
+        # Initialize data generator
         self.generator = SyntheticDataGenerator(seed=seed)
 
-        # 合成データの生成
+        # Generate synthetic data
         self.data = self.generator.generate(
             num_samples=num_samples,
             min_length=min_length,
@@ -59,15 +59,15 @@ class CDTDataset(Dataset):
         )
 
     def __len__(self) -> int:
-        """データセットのサイズを返す"""
+        """Return the size of the dataset"""
         return len(self.data)
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
-        指定されたインデックスのサンプルを取得
+        Get the sample at the specified index
 
         Args:
-            idx: サンプルのインデックス
+            idx: Index of the sample
 
         Returns:
             dict: {
@@ -79,21 +79,21 @@ class CDTDataset(Dataset):
                 'protein_tokens': Tensor
             }
         """
-        # 生の配列データを取得
+        # Get raw sequence data
         sample = self.data[idx]
 
-        # トークン化
+        # Tokenize
         dna_tokens = self.dna_tokenizer.encode(sample['dna'])
         rna_tokens = self.rna_tokenizer.encode(sample['rna'])
         protein_tokens = self.protein_tokenizer.encode(sample['protein'])
 
-        # PyTorch Tensorに変換
+        # Convert to PyTorch Tensors
         return {
-            # 生の配列（文字列）
+            # Raw sequences (strings)
             'dna': sample['dna'],
             'rna': sample['rna'],
             'protein': sample['protein'],
-            # トークン化された配列（Tensor）
+            # Tokenized sequences (Tensors)
             'dna_tokens': torch.tensor(dna_tokens, dtype=torch.long),
             'rna_tokens': torch.tensor(rna_tokens, dtype=torch.long),
             'protein_tokens': torch.tensor(protein_tokens, dtype=torch.long),
@@ -101,7 +101,7 @@ class CDTDataset(Dataset):
 
     def get_vocab_sizes(self) -> Dict[str, int]:
         """
-        各トークナイザーの語彙サイズを返す
+        Return the vocabulary size for each tokenizer
 
         Returns:
             dict: {'dna': int, 'rna': int, 'protein': int}
@@ -115,43 +115,43 @@ class CDTDataset(Dataset):
 
 def collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
     """
-    バッチをパディングして統一する
+    Pad batches to uniform length
 
-    PyTorchのDataLoaderで使用するカスタムcollate関数
-    異なる長さの配列をパディングして同じ長さに揃える
+    Custom collate function for PyTorch DataLoader
+    Pads sequences of different lengths to the same length
 
     Args:
-        batch: サンプルのリスト
+        batch: List of samples
 
     Returns:
-        dict: パディング済みのバッチ
+        dict: Padded batch
     """
-    # バッチサイズ
+    # Batch size
     batch_size = len(batch)
 
-    # 各配列の最大長を計算
+    # Calculate max length for each sequence type
     max_dna_len = max(len(sample['dna_tokens']) for sample in batch)
     max_rna_len = max(len(sample['rna_tokens']) for sample in batch)
     max_protein_len = max(len(sample['protein_tokens']) for sample in batch)
 
-    # パディング値
+    # Padding values
     dna_pad_id = 4  # 'N'
     rna_pad_id = 4  # 'N'
     protein_pad_id = 20  # 'X'
 
-    # パディング済みのテンソルを作成
+    # Create padded tensors
     dna_tokens = torch.full((batch_size, max_dna_len), dna_pad_id, dtype=torch.long)
     rna_tokens = torch.full((batch_size, max_rna_len), rna_pad_id, dtype=torch.long)
     protein_tokens = torch.full((batch_size, max_protein_len), protein_pad_id, dtype=torch.long)
 
-    # 生の配列を格納するリスト
+    # Lists to store raw sequences
     dna_seqs = []
     rna_seqs = []
     protein_seqs = []
 
-    # 各サンプルをパディング済みテンソルにコピー
+    # Copy each sample to padded tensors
     for i, sample in enumerate(batch):
-        # トークン
+        # Tokens
         dna_len = len(sample['dna_tokens'])
         rna_len = len(sample['rna_tokens'])
         protein_len = len(sample['protein_tokens'])
@@ -160,7 +160,7 @@ def collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
         rna_tokens[i, :rna_len] = sample['rna_tokens']
         protein_tokens[i, :protein_len] = sample['protein_tokens']
 
-        # 生の配列
+        # Raw sequences
         dna_seqs.append(sample['dna'])
         rna_seqs.append(sample['rna'])
         protein_seqs.append(sample['protein'])
@@ -175,36 +175,36 @@ def collate_fn(batch: List[Dict]) -> Dict[str, torch.Tensor]:
     }
 
 
-# 使用例（このファイルを直接実行した時のみ動く）
+# Usage example (runs only when this file is executed directly)
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
 
     print("=" * 60)
-    print("CDTDatasetのテスト")
+    print("CDTDataset Test")
     print("=" * 60)
     print()
 
-    # データセット作成
-    print("【データセット作成】")
+    # Create dataset
+    print("[Dataset Creation]")
     dataset = CDTDataset(num_samples=100, min_length=30, max_length=60, seed=42)
-    print(f"データセットサイズ: {len(dataset)}")
-    print(f"語彙サイズ: {dataset.get_vocab_sizes()}")
+    print(f"Dataset size: {len(dataset)}")
+    print(f"Vocabulary sizes: {dataset.get_vocab_sizes()}")
     print()
 
-    # 1サンプル取得
-    print("【1サンプル取得】")
+    # Get one sample
+    print("[Get One Sample]")
     sample = dataset[0]
-    print(f"DNA配列:     {sample['dna'][:30]}... (全{len(sample['dna'])}塩基)")
-    print(f"RNA配列:     {sample['rna'][:30]}... (全{len(sample['rna'])}塩基)")
-    print(f"Protein配列: {sample['protein']}")
+    print(f"DNA sequence:     {sample['dna'][:30]}... (total {len(sample['dna'])} nucleotides)")
+    print(f"RNA sequence:     {sample['rna'][:30]}... (total {len(sample['rna'])} nucleotides)")
+    print(f"Protein sequence: {sample['protein']}")
     print()
-    print(f"DNAトークン:     {sample['dna_tokens'][:10]}... (shape: {sample['dna_tokens'].shape})")
-    print(f"RNAトークン:     {sample['rna_tokens'][:10]}... (shape: {sample['rna_tokens'].shape})")
-    print(f"Proteinトークン: {sample['protein_tokens']} (shape: {sample['protein_tokens'].shape})")
+    print(f"DNA tokens:     {sample['dna_tokens'][:10]}... (shape: {sample['dna_tokens'].shape})")
+    print(f"RNA tokens:     {sample['rna_tokens'][:10]}... (shape: {sample['rna_tokens'].shape})")
+    print(f"Protein tokens: {sample['protein_tokens']} (shape: {sample['protein_tokens'].shape})")
     print()
 
-    # DataLoader作成
-    print("【DataLoader作成（バッチ処理）】")
+    # Create DataLoader
+    print("[DataLoader Creation (Batch Processing)]")
     dataloader = DataLoader(
         dataset,
         batch_size=4,
@@ -212,17 +212,17 @@ if __name__ == "__main__":
         collate_fn=collate_fn
     )
 
-    # 1バッチ取得
+    # Get one batch
     batch = next(iter(dataloader))
-    print(f"バッチサイズ: {len(batch['dna'])}")
-    print(f"DNAトークン shape:     {batch['dna_tokens'].shape}")
-    print(f"RNAトークン shape:     {batch['rna_tokens'].shape}")
-    print(f"Proteinトークン shape: {batch['protein_tokens'].shape}")
+    print(f"Batch size: {len(batch['dna'])}")
+    print(f"DNA tokens shape:     {batch['dna_tokens'].shape}")
+    print(f"RNA tokens shape:     {batch['rna_tokens'].shape}")
+    print(f"Protein tokens shape: {batch['protein_tokens'].shape}")
     print()
 
-    # バッチの詳細
-    print("【バッチの詳細】")
+    # Batch details
+    print("[Batch Details]")
     for i in range(len(batch['dna'])):
-        print(f"サンプル {i+1}:")
+        print(f"Sample {i+1}:")
         print(f"  DNA: {batch['dna'][i][:20]}...")
         print(f"  Protein: {batch['protein'][i]}")

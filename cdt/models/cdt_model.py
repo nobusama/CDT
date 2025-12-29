@@ -1,8 +1,8 @@
 """
 CDT Model (Central Dogma Transformer)
 
-DNA, RNA, Proteinの3つのモダリティを統合して
-セルレベルの表現（Cell Embedding）を生成する
+Integrates three modalities (DNA, RNA, Protein) to generate
+cell-level representations (Cell Embedding).
 """
 
 import torch
@@ -16,12 +16,12 @@ from .vce import VirtualCellEmbedder
 
 class TransformerEncoder(nn.Module):
     """
-    各モダリティ用のTransformer Encoder
+    Transformer Encoder for each modality.
 
-    構成:
-    1. Embedding層
+    Architecture:
+    1. Embedding layer
     2. Positional Encoding
-    3. TransformerEncoder（複数層のSelf-Attention）
+    3. TransformerEncoder (multiple Self-Attention layers)
     """
 
     def __init__(
@@ -36,20 +36,20 @@ class TransformerEncoder(nn.Module):
     ):
         """
         Args:
-            vocab_size: 語彙サイズ
-            d_model: モデルの次元数
-            nhead: マルチヘッド数
-            num_layers: Transformer層の数
-            dim_feedforward: FFNの中間層次元数（Noneの場合 d_model * 4）
-            dropout: ドロップアウト率
-            max_len: 最大配列長
+            vocab_size: Vocabulary size
+            d_model: Model dimension
+            nhead: Number of attention heads
+            num_layers: Number of Transformer layers
+            dim_feedforward: FFN intermediate dimension (defaults to d_model * 4)
+            dropout: Dropout rate
+            max_len: Maximum sequence length
         """
         super().__init__()
 
         if dim_feedforward is None:
             dim_feedforward = d_model * 4
 
-        # Embedding層
+        # Embedding layer
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.d_model = d_model
 
@@ -62,7 +62,7 @@ class TransformerEncoder(nn.Module):
             nhead=nhead,
             dim_feedforward=dim_feedforward,
             dropout=dropout,
-            batch_first=True  # [batch, seq, feature]の順
+            batch_first=True  # [batch, seq, feature] order
         )
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers)
 
@@ -73,20 +73,20 @@ class TransformerEncoder(nn.Module):
     ) -> torch.Tensor:
         """
         Args:
-            tokens: [batch, seq_len] トークンID
-            src_key_padding_mask: [batch, seq_len] パディング位置=True
+            tokens: [batch, seq_len] Token IDs
+            src_key_padding_mask: [batch, seq_len] Padding positions = True
 
         Returns:
-            [batch, seq_len, d_model] エンコードされた表現
+            [batch, seq_len, d_model] Encoded representations
         """
-        # 1. Embedding + sqrt(d_model)スケーリング（Transformerの標準）
+        # 1. Embedding + sqrt(d_model) scaling (standard Transformer practice)
         x = self.embedding(tokens) * math.sqrt(self.d_model)
         # [batch, seq_len, d_model]
 
         # 2. Positional Encoding
         x = self.pos_encoder(x)
 
-        # 3. TransformerEncoder（Self-Attention）
+        # 3. TransformerEncoder (Self-Attention)
         x = self.encoder(x, src_key_padding_mask=src_key_padding_mask)
 
         return x
@@ -96,13 +96,13 @@ class CDTModel(nn.Module):
     """
     Central Dogma Transformer
 
-    DNA, RNA, Proteinの3つのモダリティを統合して
-    セルレベルの表現を生成する
+    Integrates three modalities (DNA, RNA, Protein) to generate
+    cell-level representations.
 
-    アーキテクチャ:
-    1. 各モダリティをTransformerEncoderでエンコード
-    2. Cross-Attentionでモダリティ間の相互作用を学習
-    3. Virtual Cell Embedderで統合
+    Architecture:
+    1. Encode each modality with TransformerEncoder
+    2. Learn inter-modality interactions via Cross-Attention
+    3. Integrate with Virtual Cell Embedder
     """
 
     def __init__(
@@ -119,19 +119,19 @@ class CDTModel(nn.Module):
     ):
         """
         Args:
-            dna_vocab_size: DNA語彙サイズ
-            rna_vocab_size: RNA語彙サイズ
-            protein_vocab_size: Protein語彙サイズ
-            d_model: モデルの次元数
-            nhead: マルチヘッド数
-            num_layers: 各Encoderの層数
-            dim_feedforward: FFNの中間層次元数
-            dropout: ドロップアウト率
-            max_len: 最大配列長
+            dna_vocab_size: DNA vocabulary size
+            rna_vocab_size: RNA vocabulary size
+            protein_vocab_size: Protein vocabulary size
+            d_model: Model dimension
+            nhead: Number of attention heads
+            num_layers: Number of layers per encoder
+            dim_feedforward: FFN intermediate dimension
+            dropout: Dropout rate
+            max_len: Maximum sequence length
         """
         super().__init__()
 
-        # Encoders（各モダリティ用）
+        # Encoders (one per modality)
         self.dna_encoder = TransformerEncoder(
             dna_vocab_size, d_model, nhead, num_layers,
             dim_feedforward, dropout, max_len
@@ -146,13 +146,13 @@ class CDTModel(nn.Module):
         )
 
         # Cross-Attention Layers
-        # DNA → RNA (転写)
+        # DNA -> RNA (Transcription)
         self.dna_to_rna = CrossAttentionLayer(d_model, nhead, dim_feedforward, dropout)
 
-        # RNA → Protein (翻訳)
+        # RNA -> Protein (Translation)
         self.rna_to_protein = CrossAttentionLayer(d_model, nhead, dim_feedforward, dropout)
 
-        # Protein → DNA (フィードバック)
+        # Protein -> DNA (Feedback)
         self.protein_to_dna = CrossAttentionLayer(d_model, nhead, dim_feedforward, dropout)
 
         # Virtual Cell Embedder
@@ -170,20 +170,20 @@ class CDTModel(nn.Module):
     ) -> torch.Tensor | Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """
         Args:
-            dna_tokens: [batch, dna_len] DNAトークン
-            rna_tokens: [batch, rna_len] RNAトークン
-            protein_tokens: [batch, protein_len] Proteinトークン
-            dna_padding_mask: [batch, dna_len] パディング位置=True
-            rna_padding_mask: [batch, rna_len] パディング位置=True
-            protein_padding_mask: [batch, protein_len] パディング位置=True
-            return_attention_weights: Attention weightsを返すか
+            dna_tokens: [batch, dna_len] DNA tokens
+            rna_tokens: [batch, rna_len] RNA tokens
+            protein_tokens: [batch, protein_len] Protein tokens
+            dna_padding_mask: [batch, dna_len] Padding positions = True
+            rna_padding_mask: [batch, rna_len] Padding positions = True
+            protein_padding_mask: [batch, protein_len] Padding positions = True
+            return_attention_weights: Whether to return attention weights
 
         Returns:
-            cell_embedding: [batch, d_model] セル表現
-            または
-            (cell_embedding, attention_weights_dict) のタプル
+            cell_embedding: [batch, d_model] Cell representation
+            or
+            (cell_embedding, attention_weights_dict) tuple
         """
-        # ステップ1: Self-Attention Encoding（各モダリティ内部の関係を学習）
+        # Step 1: Self-Attention Encoding (learn intra-modality relationships)
         dna_encoded = self.dna_encoder(dna_tokens, dna_padding_mask)
         # [batch, dna_len, d_model]
 
@@ -193,9 +193,9 @@ class CDTModel(nn.Module):
         protein_encoded = self.protein_encoder(protein_tokens, protein_padding_mask)
         # [batch, protein_len, d_model]
 
-        # ステップ2: Cross-Attention（モダリティ間の相互作用を学習）
+        # Step 2: Cross-Attention (learn inter-modality interactions)
 
-        # DNA → RNA: RNAがDNAの情報を参照（転写）
+        # DNA -> RNA: RNA queries DNA information (Transcription)
         rna_fused, dna_to_rna_weights = self.dna_to_rna(
             query=rna_encoded,
             key=dna_encoded,
@@ -204,16 +204,16 @@ class CDTModel(nn.Module):
         )
         # [batch, rna_len, d_model]
 
-        # RNA → Protein: ProteinがRNAの情報を参照（翻訳）
+        # RNA -> Protein: Protein queries RNA information (Translation)
         protein_fused, rna_to_protein_weights = self.rna_to_protein(
             query=protein_encoded,
-            key=rna_fused,  # DNA情報を含んだRNA
+            key=rna_fused,  # RNA with DNA information
             value=rna_fused,
             key_padding_mask=rna_padding_mask
         )
         # [batch, protein_len, d_model]
 
-        # Protein → DNA: DNAがProteinの情報を参照（フィードバック）
+        # Protein -> DNA: DNA queries Protein information (Feedback)
         dna_fused, protein_to_dna_weights = self.protein_to_dna(
             query=dna_encoded,
             key=protein_fused,
@@ -222,7 +222,7 @@ class CDTModel(nn.Module):
         )
         # [batch, dna_len, d_model]
 
-        # ステップ3: Virtual Cell Embedding（統合）
+        # Step 3: Virtual Cell Embedding (Integration)
         cell_embedding = self.vce(dna_fused, rna_fused, protein_fused)
         # [batch, d_model]
 
@@ -237,14 +237,14 @@ class CDTModel(nn.Module):
         return cell_embedding
 
 
-# 使用例（このファイルを直接実行した時のみ動く）
+# Usage example (runs only when this file is executed directly)
 if __name__ == "__main__":
     print("=" * 70)
-    print("CDT Modelのテスト")
+    print("CDT Model Test")
     print("=" * 70)
     print()
 
-    # ハイパーパラメータ
+    # Hyperparameters
     batch_size = 4
     dna_len = 90
     rna_len = 30
@@ -255,7 +255,7 @@ if __name__ == "__main__":
     protein_vocab_size = 25
     d_model = 128
 
-    # モデル初期化
+    # Initialize model
     model = CDTModel(
         dna_vocab_size=dna_vocab_size,
         rna_vocab_size=rna_vocab_size,
@@ -265,47 +265,47 @@ if __name__ == "__main__":
         num_layers=2
     )
 
-    # ダミーデータ
+    # Dummy data
     dna_tokens = torch.randint(0, dna_vocab_size, (batch_size, dna_len))
     rna_tokens = torch.randint(0, rna_vocab_size, (batch_size, rna_len))
     protein_tokens = torch.randint(0, protein_vocab_size, (batch_size, protein_len))
 
-    print("【入力】")
+    print("[Input]")
     print(f"DNA tokens: {dna_tokens.shape}")
     print(f"RNA tokens: {rna_tokens.shape}")
     print(f"Protein tokens: {protein_tokens.shape}")
     print()
 
-    # 順伝播
-    print("【順伝播（Attention weightsなし）】")
+    # Forward pass
+    print("[Forward pass (without attention weights)]")
     cell_emb = model(dna_tokens, rna_tokens, protein_tokens)
     print(f"Cell embedding: {cell_emb.shape}")
     assert cell_emb.shape == (batch_size, d_model)
-    print("✓ Cell embedding形状確認")
+    print("✓ Cell embedding shape verified")
     print()
 
-    # Attention weightsを取得
-    print("【順伝播（Attention weightsあり）】")
+    # Get attention weights
+    print("[Forward pass (with attention weights)]")
     cell_emb, attn_weights = model(
         dna_tokens, rna_tokens, protein_tokens,
         return_attention_weights=True
     )
 
     print(f"Cell embedding: {cell_emb.shape}")
-    print(f"DNA→RNA weights: {attn_weights['dna_to_rna'].shape}")
-    print(f"RNA→Protein weights: {attn_weights['rna_to_protein'].shape}")
-    print(f"Protein→DNA weights: {attn_weights['protein_to_dna'].shape}")
+    print(f"DNA->RNA weights: {attn_weights['dna_to_rna'].shape}")
+    print(f"RNA->Protein weights: {attn_weights['rna_to_protein'].shape}")
+    print(f"Protein->DNA weights: {attn_weights['protein_to_dna'].shape}")
     print()
 
-    # パラメータ数
+    # Parameter count
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    print("【パラメータ数】")
-    print(f"総パラメータ数: {total_params:,}")
-    print(f"学習可能パラメータ数: {trainable_params:,}")
+    print("[Parameter count]")
+    print(f"Total parameters: {total_params:,}")
+    print(f"Trainable parameters: {trainable_params:,}")
     print()
 
     print("=" * 70)
-    print("CDT Modelが正常に動作しています。")
+    print("CDT Model is working correctly.")
     print("=" * 70)

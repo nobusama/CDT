@@ -1,14 +1,14 @@
 """
 RNA Tokenizer
 
-RNA配列を数値に変換するトークナイザー
-DNAとの違い：T（チミン）の代わりにU（ウラシル）を使用
+Tokenizer that converts RNA sequences to numerical values
+Difference from DNA: Uses U (Uracil) instead of T (Thymine)
 """
 
 
 class RNATokenizer:
     """
-    RNA配列（AUCG）をトークン（整数）に変換
+    Converts RNA sequences (AUCG) to tokens (integers)
 
     Example:
         >>> tokenizer = RNATokenizer()
@@ -20,104 +20,104 @@ class RNATokenizer:
 
     def __init__(self):
         """
-        トークナイザーの初期化
+        Initialize the tokenizer
 
-        vocab: 塩基 → 整数の辞書
+        vocab: Base -> integer dictionary
         """
-        # 語彙（vocabulary）: 各塩基に番号を割り当て
+        # Vocabulary: assign a number to each base
         self.vocab = {
-            'A': 0,  # Adenine（アデニン）
-            'U': 1,  # Uracil（ウラシル）- RNAではTの代わりにU
-            'C': 2,  # Cytosine（シトシン）
-            'G': 3,  # Guanine（グアニン）
-            'N': 4,  # Unknown（不明な塩基）
+            'A': 0,  # Adenine
+            'U': 1,  # Uracil - In RNA, U replaces T
+            'C': 2,  # Cytosine
+            'G': 3,  # Guanine
+            'N': 4,  # Unknown base
         }
 
-        # 逆引き辞書: 整数 → 塩基
+        # Reverse lookup dictionary: integer -> base
         self.id_to_token = {v: k for k, v in self.vocab.items()}
 
-        # 特殊トークン
-        self.pad_token = 'N'  # パディング用
+        # Special tokens
+        self.pad_token = 'N'  # For padding
         self.pad_token_id = self.vocab[self.pad_token]
 
-        # 語彙サイズ
+        # Vocabulary size
         self.vocab_size = len(self.vocab)
 
     def encode(self, sequence):
         """
-        RNA配列を整数リストに変換
+        Convert RNA sequence to integer list
 
         Args:
-            sequence (str): RNA配列（例: "AUCGAU"）
+            sequence (str): RNA sequence (e.g., "AUCGAU")
 
         Returns:
-            list[int]: トークンIDのリスト（例: [0, 1, 2, 3, 0, 1]）
+            list[int]: List of token IDs (e.g., [0, 1, 2, 3, 0, 1])
         """
-        # 大文字に統一
+        # Convert to uppercase
         sequence = sequence.upper()
 
-        # 各塩基を整数に変換
+        # Convert each base to integer
         tokens = []
         for base in sequence:
             if base in self.vocab:
                 tokens.append(self.vocab[base])
             else:
-                # 未知の塩基は 'N' として扱う
+                # Treat unknown bases as 'N'
                 tokens.append(self.vocab['N'])
 
         return tokens
 
     def decode(self, tokens):
         """
-        整数リストをRNA配列に変換
+        Convert integer list to RNA sequence
 
         Args:
-            tokens (list[int]): トークンIDのリスト（例: [0, 1, 2, 3]）
+            tokens (list[int]): List of token IDs (e.g., [0, 1, 2, 3])
 
         Returns:
-            str: RNA配列（例: "AUCG"）
+            str: RNA sequence (e.g., "AUCG")
         """
-        # 各整数を塩基に変換
+        # Convert each integer to base
         sequence = ''.join([self.id_to_token[token_id] for token_id in tokens])
         return sequence
 
     def __len__(self):
-        """語彙サイズを返す"""
+        """Return vocabulary size"""
         return self.vocab_size
 
     def __repr__(self):
-        """トークナイザーの文字列表現"""
+        """String representation of the tokenizer"""
         return f"RNATokenizer(vocab_size={self.vocab_size})"
 
 
-# 使用例（このファイルを直接実行した時のみ動く）
+# Usage example (only runs when this file is executed directly)
 if __name__ == "__main__":
-    # トークナイザーのインスタンス作成
+    # Create tokenizer instance
     tokenizer = RNATokenizer()
 
-    print(f"トークナイザー: {tokenizer}")
-    print(f"語彙サイズ: {len(tokenizer)}")
-    print(f"語彙: {tokenizer.vocab}")
+    print(f"Tokenizer: {tokenizer}")
+    print(f"Vocabulary size: {len(tokenizer)}")
+    print(f"Vocabulary: {tokenizer.vocab}")
     print()
 
-    # テスト配列
+    # Test sequence
     rna_sequence = "AUCGAUCG"
-    print(f"元の配列: {rna_sequence}")
+    print(f"Original sequence: {rna_sequence}")
 
-    # エンコード（配列 → 数値）
+    # Encode (sequence -> numbers)
     tokens = tokenizer.encode(rna_sequence)
-    print(f"トークン化: {tokens}")
+    print(f"Tokenized: {tokens}")
 
-    # デコード（数値 → 配列）
+    # Decode (numbers -> sequence)
     decoded = tokenizer.decode(tokens)
-    print(f"デコード: {decoded}")
-    print(f"一致: {rna_sequence == decoded}")
+    print(f"Decoded: {decoded}")
+    print(f"Match: {rna_sequence == decoded}")
     print()
 
-    # 未知の塩基を含む配列
-    unknown_sequence = "AUXCG"  # X は未知
-    print(f"未知の塩基を含む配列: {unknown_sequence}")
+    # Sequence with unknown base
+    unknown_sequence = "AUXCG"  # X is unknown
+    print(f"Sequence with unknown base: {unknown_sequence}")
     tokens = tokenizer.encode(unknown_sequence)
-    print(f"トークン化: {tokens}")
+    print(f"Tokenized: {tokens}")
     decoded = tokenizer.decode(tokens)
-    print(f"デコード: {decoded}")  # X → N に変換される
+    print(f"Decoded: {decoded}")  # X is converted to N

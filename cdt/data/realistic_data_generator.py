@@ -4,8 +4,8 @@ Realistic Data Generator for CDT Phase 5
 Generates biologically realistic synthetic DNA-RNA-Protein triplets
 following the Central Dogma rules:
 1. DNA sequences with gene structure (promoter, start/stop codons)
-2. Transcription: DNA → RNA (T → U)
-3. Translation: RNA → Protein (genetic code)
+2. Transcription: DNA -> RNA (T -> U)
+3. Translation: RNA -> Protein (genetic code)
 """
 
 import random
@@ -135,7 +135,7 @@ class RealisticDataGenerator:
             dna_seq: DNA sequence
 
         Returns:
-            RNA sequence (T → U)
+            RNA sequence (T -> U)
         """
         return dna_seq.replace('T', 'U')
 
@@ -369,13 +369,13 @@ def main():
     start_codon = coding_rna[:3]
     print(f"  Start codon: {start_codon} (should be AUG)")
     assert start_codon == 'AUG', "Start codon should be AUG"
-    print("  ✓ Start codon correct")
+    print("  [OK] Start codon correct")
 
     # Check first amino acid
     first_aa = example['protein_sequence'][0]
     print(f"  First amino acid: {first_aa} (should be M for Methionine)")
     assert first_aa == 'M', "First amino acid should be M"
-    print("  ✓ Translation correct")
+    print("  [OK] Translation correct")
     print()
 
     # Save dataset

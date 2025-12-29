@@ -1,48 +1,48 @@
 """
 CDT v3.2 Model: Fusion MLP with Cyclic Cross-Attention
 
-NOTE: __future__ annotations を使用してPython 3.9互換を維持
+NOTE: Using __future__ annotations to maintain Python 3.9 compatibility
 
-入力:
-  - DNA: [batch, 896, 3072] - Enformer trunk output (896 bins × 128bp)
-  - Protein: [n_proteins, 768] - ProteomeLM embeddings (全タンパク質、バッチ間で共有)
-  - RNA: [batch, n_genes, 512] - scGPT gene embeddings (遺伝子発現プロファイル)
+Inputs:
+  - DNA: [batch, 896, 3072] - Enformer trunk output (896 bins x 128bp)
+  - Protein: [n_proteins, 768] - ProteomeLM embeddings (all proteins, shared across batches)
+  - RNA: [batch, n_genes, 512] - scGPT gene embeddings (gene expression profile)
 
-出力:
-  - logits: [batch, n_proteins] - 各(エンハンサー, タンパク質)ペアのbeta値予測
+Outputs:
+  - logits: [batch, n_proteins] - beta value prediction for each (enhancer, protein) pair
 
-アーキテクチャ:
-  1. Projection (次元統一):
-     DNA [batch, 896, 3072]     → [batch, 896, hidden]
-     RNA [batch, n_genes, 512]  → [batch, n_genes, hidden]
-     Protein [n_proteins, 768]  → [batch, n_proteins, hidden]
+Architecture:
+  1. Projection (dimension unification):
+     DNA [batch, 896, 3072]     -> [batch, 896, hidden]
+     RNA [batch, n_genes, 512]  -> [batch, n_genes, hidden]
+     Protein [n_proteins, 768]  -> [batch, n_proteins, hidden]
 
   2. Self-Attention:
-     - DNA Self-Attention: 896位置間の相互作用
-     - RNA Self-Attention: 遺伝子間の共発現パターン
-     - Protein Self-Attention: タンパク質間相互作用(PPI)
+     - DNA Self-Attention: interactions between 896 positions
+     - RNA Self-Attention: gene co-expression patterns
+     - Protein Self-Attention: protein-protein interactions (PPI)
 
-  3. 循環Cross-Attention (DNA → RNA → Protein → DNA):
-     Step 1: DNA → RNA (転写)
-       Q=RNA, K/V=DNA → Attention [batch, nhead, n_genes, 896]
-     Step 2: RNA → Protein (翻訳)
-       Q=Protein, K/V=RNA → Attention [batch, nhead, n_proteins, n_genes]
-     Step 3: Protein → DNA (TFフィードバック)
-       Q=DNA, K/V=Protein → Attention [batch, nhead, 896, n_proteins]
+  3. Cyclic Cross-Attention (DNA -> RNA -> Protein -> DNA):
+     Step 1: DNA -> RNA (transcription)
+       Q=RNA, K/V=DNA -> Attention [batch, nhead, n_genes, 896]
+     Step 2: RNA -> Protein (translation)
+       Q=Protein, K/V=RNA -> Attention [batch, nhead, n_proteins, n_genes]
+     Step 3: Protein -> DNA (TF feedback)
+       Q=DNA, K/V=Protein -> Attention [batch, nhead, 896, n_proteins]
 
-  4. Fusion MLP (プーリングなし、位置情報保持):
+  4. Fusion MLP (no pooling, preserving positional information):
      concat([dna_fused, rna_fused, protein_fused], dim=1)
-     → [batch, 896 + n_genes + n_proteins, hidden]
-     → MLP処理
-     → Protein部分を抽出 [batch, n_proteins, hidden]
+     -> [batch, 896 + n_genes + n_proteins, hidden]
+     -> MLP processing
+     -> Extract Protein part [batch, n_proteins, hidden]
 
   5. Task Layer:
-     [batch, n_proteins, hidden] → [batch, n_proteins] (回帰出力)
+     [batch, n_proteins, hidden] -> [batch, n_proteins] (regression output)
 
-解釈可能なAttention Map:
-  - dna_to_rna: どのDNA位置がどの遺伝子に影響するか
-  - rna_to_protein: どの遺伝子がどのタンパク質に関連するか
-  - protein_to_dna: どのタンパク質がどのDNA位置に結合するか
+Interpretable Attention Maps:
+  - dna_to_rna: which DNA positions affect which genes
+  - rna_to_protein: which genes are related to which proteins
+  - protein_to_dna: which proteins bind to which DNA positions
 """
 
 from __future__ import annotations
@@ -52,53 +52,53 @@ import torch.nn as nn
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-# v3.2: VCE → Fusion MLP に変更（プーリングなし、位置情報保持）
+# v3.2: VCE -> Fusion MLP (no pooling, preserving positional information)
 
 
 def attention_sparsity_loss(attn_weights: torch.Tensor) -> torch.Tensor:
     """
-    Attention分布のエントロピーを最小化してスパース性を促進
+    Minimize attention distribution entropy to promote sparsity
 
     Args:
-        attn_weights: [batch, nhead, Q, K] (softmax後、0-1の確率分布)
+        attn_weights: [batch, nhead, Q, K] (after softmax, 0-1 probability distribution)
 
     Returns:
-        sparsity_loss: スカラー（小さい = 疎なAttention）
+        sparsity_loss: scalar (smaller = sparser attention)
     """
-    # エントロピー: H = -Σ p * log(p)
-    # 低いエントロピー = 少数の位置に集中
+    # Entropy: H = -sum(p * log(p))
+    # Low entropy = concentrated on few positions
     entropy = -torch.sum(attn_weights * torch.log(attn_weights + 1e-8), dim=-1)
     return entropy.mean()
 
 
 @dataclass
 class CDTv2Config:
-    """CDT v2 モデル設定"""
-    # 入力次元
+    """CDT v2 Model Configuration"""
+    # Input dimensions
     dna_dim: int = 3072      # Enformer trunk output
     dna_seq_len: int = 896   # Enformer bins (128bp resolution)
     protein_dim: int = 768   # ProteomeLM output (or 1280 for ESM-2)
     rna_dim: int = 512       # scGPT output
-    n_proteins: int = 2360   # タンパク質数（出力次元）
+    n_proteins: int = 2360   # Number of proteins (output dimension)
 
-    # モデル次元
+    # Model dimensions
     hidden_dim: int = 256
     nhead: int = 4
     dropout: float = 0.1
 
-    # Self-Attention設定
-    dna_self_attn_layers: int = 2      # DNA自身のSelf-Attention層数
-    rna_self_attn_layers: int = 1      # RNA Self-Attention層数
-    protein_self_attn_layers: int = 1  # Protein Self-Attention層数
+    # Self-Attention configuration
+    dna_self_attn_layers: int = 2      # Number of DNA Self-Attention layers
+    rna_self_attn_layers: int = 1      # Number of RNA Self-Attention layers
+    protein_self_attn_layers: int = 1  # Number of Protein Self-Attention layers
 
-    # Cross-Attention設定 (循環: DNA→RNA→Protein→DNA)
-    # Step 1: DNA → RNA (転写): Q=RNA, K=DNA
-    # Step 2: RNA → Protein (翻訳): Q=Protein, K=RNA
-    # Step 3: Protein → DNA (TFフィードバック): Q=DNA, K=Protein
+    # Cross-Attention configuration (cyclic: DNA->RNA->Protein->DNA)
+    # Step 1: DNA -> RNA (transcription): Q=RNA, K=DNA
+    # Step 2: RNA -> Protein (translation): Q=Protein, K=RNA
+    # Step 3: Protein -> DNA (TF feedback): Q=DNA, K=Protein
 
 
 class SequenceProjector(nn.Module):
-    """シーケンス埋め込みを共通次元に投影 (シーケンス長を保持)"""
+    """Project sequence embeddings to common dimension (preserving sequence length)"""
 
     def __init__(self, input_dim: int, output_dim: int, dropout: float = 0.1):
         super().__init__()
@@ -109,9 +109,9 @@ class SequenceProjector(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: [batch, seq_len, input_dim] または [seq_len, input_dim] または [batch, input_dim]
+            x: [batch, seq_len, input_dim] or [seq_len, input_dim] or [batch, input_dim]
         Returns:
-            同じ形状で output_dim に投影
+            Same shape projected to output_dim
         """
         x = self.linear(x)
         x = self.norm(x)
@@ -121,9 +121,9 @@ class SequenceProjector(nn.Module):
 
 class DNASelfAttentionBlock(nn.Module):
     """
-    DNA配列内のSelf-Attention
+    Self-Attention within DNA sequence
 
-    896ポジション間の相互作用を学習
+    Learns interactions between 896 positions
     """
 
     def __init__(self, d_model: int, nhead: int = 4, dropout: float = 0.1):
@@ -176,10 +176,10 @@ class DNASelfAttentionBlock(nn.Module):
 
 class RNASelfAttentionBlock(nn.Module):
     """
-    RNA遺伝子(RNA)発現のSelf-Attention
+    Self-Attention for RNA gene expression
 
-    遺伝子(RNA)間の共発現パターンを学習
-    n_genes: 遺伝子(RNA)発現プロファイルの遺伝子数
+    Learns gene co-expression patterns
+    n_genes: number of genes in RNA expression profile
     """
 
     def __init__(self, d_model: int, nhead: int = 4, dropout: float = 0.1):
@@ -232,9 +232,9 @@ class RNASelfAttentionBlock(nn.Module):
 
 class ProteinSelfAttentionBlock(nn.Module):
     """
-    タンパク質間のSelf-Attention
+    Self-Attention between proteins
 
-    タンパク質間相互作用（PPI）パターンを学習
+    Learns protein-protein interaction (PPI) patterns
     """
 
     def __init__(self, d_model: int, nhead: int = 4, dropout: float = 0.1):
@@ -287,12 +287,12 @@ class ProteinSelfAttentionBlock(nn.Module):
 
 class DNAToRNACrossAttention(nn.Module):
     """
-    DNA → RNA のCross-Attention (循環Step 1: 転写)
+    DNA -> RNA Cross-Attention (Cyclic Step 1: Transcription)
 
-    RNAがDNA情報を参照（転写プロセス）
-    Q = RNA [batch, n_genes, hidden]  # n_genes: 遺伝子(RNA)数
+    RNA references DNA information (transcription process)
+    Q = RNA [batch, n_genes, hidden]  # n_genes: number of RNA genes
     K, V = DNA [batch, 896, hidden]
-    → Attention [batch, nhead, n_genes, 896] ← DNA位置ごとの重要度が解釈可能！
+    -> Attention [batch, nhead, n_genes, 896] <- DNA position importance is interpretable!
     """
 
     def __init__(self, d_model: int, nhead: int = 4, dropout: float = 0.1):
@@ -347,12 +347,12 @@ class DNAToRNACrossAttention(nn.Module):
 
 class RNAToProteinCrossAttention(nn.Module):
     """
-    RNA → Protein のCross-Attention (循環Step 2: 翻訳)
+    RNA -> Protein Cross-Attention (Cyclic Step 2: Translation)
 
-    ProteinがRNA情報を参照（翻訳プロセス）
+    Protein references RNA information (translation process)
     Q = Protein [batch, n_proteins, hidden]
     K, V = RNA [batch, n_genes, hidden]
-    → Attention [batch, n_proteins, n_genes]
+    -> Attention [batch, n_proteins, n_genes]
     """
 
     def __init__(self, d_model: int, nhead: int = 4, dropout: float = 0.1):
@@ -407,12 +407,12 @@ class RNAToProteinCrossAttention(nn.Module):
 
 class ProteinToDNACrossAttention(nn.Module):
     """
-    Protein → DNA のCross-Attention (循環Step 3: TFフィードバック)
+    Protein -> DNA Cross-Attention (Cyclic Step 3: TF Feedback)
 
-    DNAがProtein情報を参照（TFフィードバック）
+    DNA references Protein information (TF feedback)
     Q = DNA [batch, 896, hidden]
     K, V = Protein [batch, n_proteins, hidden]
-    → Attention [batch, 896, n_proteins]
+    -> Attention [batch, 896, n_proteins]
     """
 
     def __init__(self, d_model: int, nhead: int = 4, dropout: float = 0.1):
@@ -467,9 +467,9 @@ class ProteinToDNACrossAttention(nn.Module):
 
 class RNAPooling(nn.Module):
     """
-    RNA遺伝子発現をプーリング
+    Pool RNA gene expression
 
-    [batch, n_genes, hidden] → [batch, hidden]
+    [batch, n_genes, hidden] -> [batch, hidden]
     """
 
     def __init__(self, hidden_dim: int, dropout: float = 0.1):
@@ -504,16 +504,16 @@ class CDTv2Model(nn.Module):
     """
     CDT v2 Model: Full Proteome Attention
 
-    入力:
-      - DNA: [batch, 896, 3072] - batch個のエンハンサー領域
-      - Protein: [n_proteins, 768] - 全タンパク質埋め込み（バッチ間で共有）
-      - RNA: [batch, n_genes, 512] - 各サンプルの遺伝子発現
+    Inputs:
+      - DNA: [batch, 896, 3072] - batch enhancer regions
+      - Protein: [n_proteins, 768] - all protein embeddings (shared across batches)
+      - RNA: [batch, n_genes, 512] - gene expression for each sample
 
-    出力:
-      - logits: [batch, n_proteins] - 各(エンハンサー, タンパク質)ペアの結合予測
+    Outputs:
+      - logits: [batch, n_proteins] - binding prediction for each (enhancer, protein) pair
 
     Attention:
-      - protein_to_dna: [batch, nhead, n_proteins, 896] - 各TFがどのDNA位置に注目するか
+      - protein_to_dna: [batch, nhead, n_proteins, 896] - which DNA positions each TF attends to
     """
 
     def __init__(self, config: Optional[CDTv2Config] = None):
@@ -527,15 +527,15 @@ class CDTv2Model(nn.Module):
         # ========================================
         # 1. Projectors
         # ========================================
-        # DNA: [batch, 896, 3072] → [batch, 896, hidden]
+        # DNA: [batch, 896, 3072] -> [batch, 896, hidden]
         self.dna_projector = SequenceProjector(
             config.dna_dim, config.hidden_dim, config.dropout
         )
-        # Protein: [n_proteins, 768] → [n_proteins, hidden]
+        # Protein: [n_proteins, 768] -> [n_proteins, hidden]
         self.protein_projector = SequenceProjector(
             config.protein_dim, config.hidden_dim, config.dropout
         )
-        # RNA: [batch, n_genes, 512] → [batch, n_genes, hidden]
+        # RNA: [batch, n_genes, 512] -> [batch, n_genes, hidden]
         self.rna_projector = SequenceProjector(
             config.rna_dim, config.hidden_dim, config.dropout
         )
@@ -549,7 +549,7 @@ class CDTv2Model(nn.Module):
         ])
 
         # ========================================
-        # 3. RNA Self-Attention (遺伝子間共発現パターン)
+        # 3. RNA Self-Attention (gene co-expression patterns)
         # ========================================
         self.rna_self_attn_layers = nn.ModuleList([
             RNASelfAttentionBlock(config.hidden_dim, config.nhead, config.dropout)
@@ -557,7 +557,7 @@ class CDTv2Model(nn.Module):
         ])
 
         # ========================================
-        # 4. Protein Self-Attention (PPI パターン)
+        # 4. Protein Self-Attention (PPI patterns)
         # ========================================
         self.protein_self_attn_layers = nn.ModuleList([
             ProteinSelfAttentionBlock(config.hidden_dim, config.nhead, config.dropout)
@@ -565,35 +565,35 @@ class CDTv2Model(nn.Module):
         ])
 
         # ========================================
-        # 循環 Cross-Attention (DNA → RNA → Protein → DNA)
+        # Cyclic Cross-Attention (DNA -> RNA -> Protein -> DNA)
         # ========================================
-        # Step 1: DNA → RNA (転写): Q=RNA, K=DNA
+        # Step 1: DNA -> RNA (transcription): Q=RNA, K=DNA
         self.dna_to_rna = DNAToRNACrossAttention(
             config.hidden_dim, config.nhead, config.dropout
         )
 
-        # Step 2: RNA → Protein (翻訳): Q=Protein, K=RNA
+        # Step 2: RNA -> Protein (translation): Q=Protein, K=RNA
         self.rna_to_protein = RNAToProteinCrossAttention(
             config.hidden_dim, config.nhead, config.dropout
         )
 
-        # Step 3: Protein → DNA (TFフィードバック): Q=DNA, K=Protein
+        # Step 3: Protein -> DNA (TF feedback): Q=DNA, K=Protein
         self.protein_to_dna = ProteinToDNACrossAttention(
             config.hidden_dim, config.nhead, config.dropout
         )
 
         # ========================================
-        # 8. Fusion MLP (VCE代替)
+        # 8. Fusion MLP (VCE replacement)
         # ========================================
-        # DNA, RNA, Protein を連結してMLP
-        # [batch, 896 + n_genes + n_proteins, hidden] → 処理 → [batch, n_proteins]
+        # Concatenate DNA, RNA, Protein and process with MLP
+        # [batch, 896 + n_genes + n_proteins, hidden] -> process -> [batch, n_proteins]
         #
-        # これにより:
-        # - 3つの埋め込みが均等に貢献
-        # - ProteomeLMの支配を抑制
-        # - 「総合判断」で予測
+        # This achieves:
+        # - All three embeddings contribute equally
+        # - Suppresses ProteomeLM dominance
+        # - "Comprehensive judgment" for prediction
 
-        # Fusion MLP: 連結された表現を処理
+        # Fusion MLP: process concatenated representations
         self.fusion_mlp = nn.Sequential(
             nn.Linear(config.hidden_dim, config.hidden_dim),
             nn.GELU(),
@@ -603,7 +603,7 @@ class CDTv2Model(nn.Module):
         # ========================================
         # 9. Task Layer
         # ========================================
-        # protein部分の hidden 表現 → 1スカラー
+        # protein part hidden representation -> 1 scalar
         self.task_layer = nn.Sequential(
             nn.Linear(config.hidden_dim, config.hidden_dim // 2),
             nn.GELU(),
@@ -621,20 +621,20 @@ class CDTv2Model(nn.Module):
         """
         Args:
             dna_emb: [batch, 896, 3072] Enformer sequence-level embeddings
-            protein_emb: [n_proteins, 768] ProteomeLM embeddings (全タンパク質)
+            protein_emb: [n_proteins, 768] ProteomeLM embeddings (all proteins)
             rna_emb: [batch, n_genes, 512] scGPT gene embeddings
-            return_attention: Attention weightsを返すか
+            return_attention: whether to return attention weights
 
         Returns:
-            logits: [batch, n_proteins] - 各(エンハンサー, タンパク質)の結合予測
+            logits: [batch, n_proteins] - binding prediction for each (enhancer, protein)
             attention (if return_attention):
                 dna_self_attn: list of [batch, nhead, 896, 896]
                 rna_self_attn: list of [batch, nhead, n_genes, n_genes]
                 protein_self_attn: list of [batch, nhead, n_proteins, n_proteins]
-                循環Cross-Attention:
-                dna_to_rna: [batch, nhead, n_genes, 896]    # Step1: DNA→RNA (転写)
-                rna_to_protein: [batch, nhead, n_proteins, n_genes]  # Step2: RNA→Protein (翻訳)
-                protein_to_dna: [batch, nhead, 896, n_proteins]  # Step3: Protein→DNA (TFフィードバック)
+                Cyclic Cross-Attention:
+                dna_to_rna: [batch, nhead, n_genes, 896]    # Step1: DNA->RNA (transcription)
+                rna_to_protein: [batch, nhead, n_proteins, n_genes]  # Step2: RNA->Protein (translation)
+                protein_to_dna: [batch, nhead, 896, n_proteins]  # Step3: Protein->DNA (TF feedback)
         """
         batch_size = dna_emb.size(0)
         n_proteins = protein_emb.size(0)
@@ -643,15 +643,15 @@ class CDTv2Model(nn.Module):
         # ========================================
         # Step 1: Projection
         # ========================================
-        # DNA: [batch, 896, 3072] → [batch, 896, hidden]
+        # DNA: [batch, 896, 3072] -> [batch, 896, hidden]
         dna = self.dna_projector(dna_emb)
 
-        # Protein: [n_proteins, 768] → [n_proteins, hidden]
+        # Protein: [n_proteins, 768] -> [n_proteins, hidden]
         protein = self.protein_projector(protein_emb)
-        # Expand for batch: [n_proteins, hidden] → [batch, n_proteins, hidden]
+        # Expand for batch: [n_proteins, hidden] -> [batch, n_proteins, hidden]
         protein = protein.unsqueeze(0).expand(batch_size, -1, -1)
 
-        # RNA: [batch, n_genes, 512] → [batch, n_genes, hidden]
+        # RNA: [batch, n_genes, 512] -> [batch, n_genes, hidden]
         rna = self.rna_projector(rna_emb)
 
         # ========================================
@@ -667,7 +667,7 @@ class CDTv2Model(nn.Module):
             attention_maps['dna_self_attn'] = dna_self_attns
 
         # ========================================
-        # Step 3: RNA Self-Attention (遺伝子間共発現)
+        # Step 3: RNA Self-Attention (gene co-expression)
         # ========================================
         rna_self_attns = []
         for layer in self.rna_self_attn_layers:
@@ -691,12 +691,12 @@ class CDTv2Model(nn.Module):
             attention_maps['protein_self_attn'] = protein_self_attns
 
         # ========================================
-        # 循環 Cross-Attention (DNA → RNA → Protein → DNA)
+        # Cyclic Cross-Attention (DNA -> RNA -> Protein -> DNA)
         # ========================================
 
-        # Step 5: DNA → RNA (転写)
-        # RNAがDNA情報を参照
-        # Attention [batch, nhead, n_genes, 896] ← DNA位置の重要度が解釈可能!
+        # Step 5: DNA -> RNA (transcription)
+        # RNA references DNA information
+        # Attention [batch, nhead, n_genes, 896] <- DNA position importance is interpretable!
         rna_fused, dna_to_rna_attn = self.dna_to_rna(
             rna=rna,  # Q: [batch, n_genes, hidden]
             dna=dna   # K,V: [batch, 896, hidden]
@@ -704,8 +704,8 @@ class CDTv2Model(nn.Module):
         if return_attention:
             attention_maps['dna_to_rna'] = dna_to_rna_attn
 
-        # Step 6: RNA → Protein (翻訳)
-        # ProteinがRNA情報を参照
+        # Step 6: RNA -> Protein (translation)
+        # Protein references RNA information
         protein_fused, rna_to_protein_attn = self.rna_to_protein(
             protein=protein,  # Q: [batch, n_proteins, hidden]
             rna=rna_fused     # K,V: [batch, n_genes, hidden]
@@ -713,8 +713,8 @@ class CDTv2Model(nn.Module):
         if return_attention:
             attention_maps['rna_to_protein'] = rna_to_protein_attn
 
-        # Step 7: Protein → DNA (TFフィードバック)
-        # DNAがProtein情報を参照
+        # Step 7: Protein -> DNA (TF feedback)
+        # DNA references Protein information
         dna_fused, protein_to_dna_attn = self.protein_to_dna(
             dna=dna,              # Q: [batch, 896, hidden]
             protein=protein_fused  # K,V: [batch, n_proteins, hidden]
@@ -723,16 +723,16 @@ class CDTv2Model(nn.Module):
             attention_maps['protein_to_dna'] = protein_to_dna_attn
 
         # ========================================
-        # Step 8: Fusion MLP (VCE代替)
+        # Step 8: Fusion MLP (VCE replacement)
         # ========================================
-        # 3つの埋め込みをシーケンス方向に連結
+        # Concatenate three embeddings along sequence dimension
         # [batch, 896 + n_genes + n_proteins, hidden]
         combined = torch.cat([dna_fused, rna_fused, protein_fused], dim=1)
 
-        # Fusion MLP で処理
+        # Process with Fusion MLP
         combined = self.fusion_mlp(combined)
 
-        # Protein 部分を抽出（末尾 n_proteins 位置）
+        # Extract Protein part (last n_proteins positions)
         n_proteins_dim = protein_fused.size(1)
         protein_repr = combined[:, -n_proteins_dim:, :]  # [batch, n_proteins, hidden]
 
@@ -740,8 +740,8 @@ class CDTv2Model(nn.Module):
         # Step 9: Task Layer
         # ========================================
         # protein_repr: [batch, n_proteins, hidden]
-        # → task_layer → [batch, n_proteins, 1]
-        # → squeeze → [batch, n_proteins]
+        # -> task_layer -> [batch, n_proteins, 1]
+        # -> squeeze -> [batch, n_proteins]
         logits = self.task_layer(protein_repr).squeeze(-1)  # [batch, n_proteins]
 
         if return_attention:
@@ -750,7 +750,7 @@ class CDTv2Model(nn.Module):
         return logits
 
     def get_num_params(self) -> int:
-        """学習可能パラメータ数を返す"""
+        """Return number of trainable parameters"""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
     def get_protein_representations(
@@ -760,12 +760,12 @@ class CDTv2Model(nn.Module):
         rna_emb: torch.Tensor
     ) -> torch.Tensor:
         """
-        Cross-Attention後のタンパク質表現を取得
+        Get protein representations after Cross-Attention
 
-        各タンパク質の hidden 表現を取得:
-        - 転移学習
-        - タンパク質間の類似性比較
-        - クラスタリング・可視化
+        Obtain hidden representation for each protein:
+        - Transfer learning
+        - Protein similarity comparison
+        - Clustering and visualization
 
         Args:
             dna_emb: [batch, 896, 3072] Enformer sequence-level embeddings
@@ -773,7 +773,7 @@ class CDTv2Model(nn.Module):
             rna_emb: [batch, n_genes, 512] scGPT gene embeddings
 
         Returns:
-            protein_fused: [batch, n_proteins, hidden] タンパク質表現
+            protein_fused: [batch, n_proteins, hidden] protein representations
         """
         batch_size = dna_emb.size(0)
 
@@ -795,7 +795,7 @@ class CDTv2Model(nn.Module):
         for layer in self.protein_self_attn_layers:
             protein, _ = layer(protein, return_attention=False)
 
-        # 循環 Cross-Attention
+        # Cyclic Cross-Attention
         rna_fused, _ = self.dna_to_rna(rna=rna, dna=dna)
         protein_fused, _ = self.rna_to_protein(protein=protein, rna=rna_fused)
 
@@ -804,17 +804,17 @@ class CDTv2Model(nn.Module):
     @staticmethod
     def compute_sparsity_loss(attention_maps: Dict[str, torch.Tensor], target_keys: list = None) -> torch.Tensor:
         """
-        Attention Mapのスパース性損失を計算
+        Compute sparsity loss for Attention Maps
 
         Args:
-            attention_maps: forward(return_attention=True) の出力
-            target_keys: スパース化対象のキー（デフォルト: ['dna_to_rna']）
+            attention_maps: output from forward(return_attention=True)
+            target_keys: keys to apply sparsity (default: ['dna_to_rna'])
 
         Returns:
-            sparsity_loss: スカラー
+            sparsity_loss: scalar
         """
         if target_keys is None:
-            target_keys = ['dna_to_rna']  # DNA→RNA が最も解釈したい部分
+            target_keys = ['dna_to_rna']  # DNA->RNA is the most interpretable part
 
         total_loss = 0.0
         count = 0
@@ -834,12 +834,12 @@ class CDTv2Model(nn.Module):
         bin_size: int = 128
     ) -> Dict[str, any]:
         """
-        Attention weightsをゲノム座標に変換
+        Convert attention weights to genomic coordinates
 
         Args:
             attention: [batch, nhead, n_proteins, 896]
-            center_pos: エンハンサー中心のゲノム座標
-            bin_size: 1 binあたりのbp (default: 128)
+            center_pos: genomic coordinate of enhancer center
+            bin_size: bp per bin (default: 128)
 
         Returns:
             dict with 'start', 'end', 'weights' per bin
@@ -869,49 +869,49 @@ class CDTv2Model(nn.Module):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("CDT v2 Model テスト (Full Proteome Version)")
+    print("CDT v2 Model Test (Full Proteome Version)")
     print("=" * 60)
 
     batch_size = 4
-    n_proteins = 100  # テスト用（実際は ~20,000）
-    n_genes = 500     # テスト用（実際は ~20,000）
+    n_proteins = 100  # For testing (actual: ~20,000)
+    n_genes = 500     # For testing (actual: ~20,000)
     dna_seq_len = 896
 
-    # ダミーデータ
+    # Dummy data
     dna_emb = torch.randn(batch_size, dna_seq_len, 3072)  # [batch, 896, 3072]
     protein_emb = torch.randn(n_proteins, 768)            # [n_proteins, 768]
     rna_emb = torch.randn(batch_size, n_genes, 512)       # [batch, n_genes, 512]
 
-    print(f"\n入力形状:")
-    print(f"  DNA:     {dna_emb.shape} (batch × 896 bins × 3072)")
-    print(f"  Protein: {protein_emb.shape} (n_proteins × 768) - 全タンパク質")
-    print(f"  RNA:     {rna_emb.shape} (batch × n_genes × 512)")
+    print(f"\nInput shapes:")
+    print(f"  DNA:     {dna_emb.shape} (batch x 896 bins x 3072)")
+    print(f"  Protein: {protein_emb.shape} (n_proteins x 768) - all proteins")
+    print(f"  RNA:     {rna_emb.shape} (batch x n_genes x 512)")
 
-    # モデル作成
+    # Create model
     config = CDTv2Config()
     model = CDTv2Model(config)
 
-    print(f"\nモデル設定:")
+    print(f"\nModel configuration:")
     print(f"  hidden_dim: {config.hidden_dim}")
     print(f"  nhead: {config.nhead}")
     print(f"  dna_self_attn_layers: {config.dna_self_attn_layers}")
-    print(f"  パラメータ数: {model.get_num_params():,}")
+    print(f"  Number of parameters: {model.get_num_params():,}")
 
     # Forward pass
     print("\n" + "-" * 40)
     print("Forward pass (return_attention=False)")
     logits = model(dna_emb, protein_emb, rna_emb)
-    print(f"  出力形状: {logits.shape}")
-    print(f"  → [batch={batch_size}, n_proteins={n_proteins}]")
-    print(f"  → 各エンハンサーに対する全タンパク質の結合予測")
+    print(f"  Output shape: {logits.shape}")
+    print(f"  -> [batch={batch_size}, n_proteins={n_proteins}]")
+    print(f"  -> Binding prediction for all proteins for each enhancer")
 
     print("\n" + "-" * 40)
     print("Forward pass (return_attention=True)")
     logits, attention = model(dna_emb, protein_emb, rna_emb, return_attention=True)
-    print(f"  出力形状: {logits.shape}")
+    print(f"  Output shape: {logits.shape}")
     print(f"  Attention keys: {list(attention.keys())}")
 
-    print("\n  Attention shapes (解釈可能!):")
+    print("\n  Attention shapes (interpretable!):")
     for key, value in attention.items():
         if isinstance(value, list):
             print(f"    {key}: list of {len(value)} tensors")
@@ -920,43 +920,43 @@ if __name__ == "__main__":
         else:
             print(f"    {key}: {value.shape}")
 
-    # Attention分布の確認 (循環Cross-Attention)
+    # Check attention distribution (Cyclic Cross-Attention)
     print("\n" + "-" * 40)
-    print("循環Cross-Attention Map確認:")
+    print("Cyclic Cross-Attention Map verification:")
 
-    # Step 1: DNA → RNA (転写) - 最も解釈可能！
-    print("\n  [Step 1] DNA → RNA (転写)")
+    # Step 1: DNA -> RNA (transcription) - Most interpretable!
+    print("\n  [Step 1] DNA -> RNA (transcription)")
     dna_to_rna_attn = attention['dna_to_rna']  # [batch, nhead, n_genes, 896]
-    print(f"    形状: {dna_to_rna_attn.shape}")
-    print(f"    → 各遺伝子がDNA 896位置にどう注目するか")
-    attn_dist = dna_to_rna_attn[0, 0, 0, :]  # gene0の分布
-    print(f"    gene0の分布: sum={attn_dist.sum().item():.4f}, max_bin={attn_dist.argmax().item()}")
+    print(f"    Shape: {dna_to_rna_attn.shape}")
+    print(f"    -> How each gene attends to DNA 896 positions")
+    attn_dist = dna_to_rna_attn[0, 0, 0, :]  # gene0 distribution
+    print(f"    gene0 distribution: sum={attn_dist.sum().item():.4f}, max_bin={attn_dist.argmax().item()}")
 
-    # Step 2: RNA → Protein (翻訳)
-    print("\n  [Step 2] RNA → Protein (翻訳)")
+    # Step 2: RNA -> Protein (translation)
+    print("\n  [Step 2] RNA -> Protein (translation)")
     rna_to_prot_attn = attention['rna_to_protein']  # [batch, nhead, n_proteins, n_genes]
-    print(f"    形状: {rna_to_prot_attn.shape}")
-    print(f"    → 各タンパク質がどの遺伝子(RNA)に注目するか")
+    print(f"    Shape: {rna_to_prot_attn.shape}")
+    print(f"    -> Which genes each protein attends to")
 
-    # Step 3: Protein → DNA (TFフィードバック)
-    print("\n  [Step 3] Protein → DNA (TFフィードバック)")
+    # Step 3: Protein -> DNA (TF feedback)
+    print("\n  [Step 3] Protein -> DNA (TF feedback)")
     prot_to_dna_attn = attention['protein_to_dna']  # [batch, nhead, 896, n_proteins]
-    print(f"    形状: {prot_to_dna_attn.shape}")
-    print(f"    → 各DNA位置がどのタンパク質に注目するか")
+    print(f"    Shape: {prot_to_dna_attn.shape}")
+    print(f"    -> Which proteins each DNA position attends to")
 
-    # シグモイドで確率に変換
+    # Convert to probability with sigmoid
     print("\n" + "-" * 40)
-    print("結合確率の確認")
+    print("Binding probability verification")
     probs = torch.sigmoid(logits)
-    print(f"  logits範囲: [{logits.min().item():.3f}, {logits.max().item():.3f}]")
-    print(f"  確率範囲: [{probs.min().item():.3f}, {probs.max().item():.3f}]")
-    print(f"  サンプル0の予測:")
-    print(f"    結合確率 > 0.5 のタンパク質数: {(probs[0] > 0.5).sum().item()}/{n_proteins}")
+    print(f"  logits range: [{logits.min().item():.3f}, {logits.max().item():.3f}]")
+    print(f"  probability range: [{probs.min().item():.3f}, {probs.max().item():.3f}]")
+    print(f"  Sample 0 predictions:")
+    print(f"    Number of proteins with binding probability > 0.5: {(probs[0] > 0.5).sum().item()}/{n_proteins}")
 
     print("\n" + "=" * 60)
-    print("✓ CDT v2 Model (循環Cross-Attention) テスト完了!")
-    print(f"  → 出力: [batch, n_proteins] = [{batch_size}, {n_proteins}]")
-    print(f"  → 循環: DNA → RNA → Protein → DNA")
-    print(f"  → dna_to_rna [batch, nhead, n_genes, 896] で")
-    print(f"    「どのDNA位置が転写に重要か」が解釈可能")
+    print("CDT v2 Model (Cyclic Cross-Attention) test complete!")
+    print(f"  -> Output: [batch, n_proteins] = [{batch_size}, {n_proteins}]")
+    print(f"  -> Cycle: DNA -> RNA -> Protein -> DNA")
+    print(f"  -> dna_to_rna [batch, nhead, n_genes, 896] shows")
+    print(f"    'which DNA positions are important for transcription'")
     print("=" * 60)
