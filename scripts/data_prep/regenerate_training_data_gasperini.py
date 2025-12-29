@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Gasperini-aligned遺伝子インデックスで訓練データを再生成する
+Regenerate training data with Gasperini-aligned gene indices
 
-元の訓練データ（esm2_idx: 0-20419）を新しいGasperini-aligned
-インデックス（0-11017）にマッピングする
+Maps original training data (esm2_idx: 0-20419) to new Gasperini-aligned
+indices (0-11017)
 
 Usage:
     python scripts/data_prep/regenerate_training_data_gasperini.py
@@ -27,7 +27,7 @@ OUTPUT_DIR = DATA_DIR / "processed/training_gasperini_aligned"
 
 
 def load_gene_mappings():
-    """遺伝子名マッピングを作成"""
+    """Create gene name mappings"""
     print("Loading gene mappings...")
 
     # Original ProteinLM: idx -> gene_name
@@ -47,7 +47,7 @@ def load_gene_mappings():
 
 def convert_training_file(input_path: Path, output_path: Path,
                           orig_idx_to_gene: dict, gene_to_new_idx: dict):
-    """訓練データファイルを変換"""
+    """Convert training data file"""
     print(f"\nConverting {input_path.name}...")
 
     with h5py.File(input_path, 'r') as f:

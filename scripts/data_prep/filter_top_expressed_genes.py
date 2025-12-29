@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Top発現遺伝子でフィルタリング (v3.4用)
+Filter by Top Expressed Genes (for v3.4)
 
-Gasperini pseudo-bulkの発現量に基づいて、top N遺伝子のみを選択し、
-埋め込みとインデックスマッピングを再生成する。
+Select only top N genes based on Gasperini pseudo-bulk expression,
+and regenerate embeddings and index mappings.
 
-メモリ問題の解決:
-- 11,018遺伝子 → 5,000遺伝子に削減
-- Self-Attention: 31GB → 6.4GB (A100で実行可能)
+Memory problem solution:
+- 11,018 genes to 5,000 genes reduction
+- Self-Attention: 31GB to 6.4GB (executable on A100)
 
 Usage:
     python scripts/data_prep/filter_top_expressed_genes.py --n-genes 5000
@@ -41,7 +41,7 @@ OUTPUT_DIR = DATA_DIR / "processed/embeddings"
 
 
 def load_ensg_to_symbol():
-    """ENSG → gene symbol mapping from Morris data"""
+    """ENSG to gene symbol mapping from Morris data"""
     print("Loading ENSG → symbol mapping...")
     with h5py.File(MORRIS_DATA, 'r') as f:
         gene_ids = [g.decode() if isinstance(g, bytes) else g for g in f['gene_ids'][:]]
@@ -50,7 +50,7 @@ def load_ensg_to_symbol():
 
 
 def compute_pseudobulk_expression(ensg_to_symbol: dict):
-    """Gasperini scRNA-seqからpseudo-bulk発現量を計算"""
+    """Compute pseudo-bulk expression from Gasperini scRNA-seq"""
     print("\nComputing pseudo-bulk expression from Gasperini scRNA-seq...")
     print(f"  Loading {GASPERINI_EXPRS} (this takes a few minutes)...")
 
@@ -62,7 +62,7 @@ def compute_pseudobulk_expression(ensg_to_symbol: dict):
     # Load expression matrix
     expression_matrix = mmread(GASPERINI_EXPRS).T.tocsr()  # (cells, genes)
     n_cells, n_genes = expression_matrix.shape
-    print(f"  Matrix shape: {n_cells} cells × {n_genes} genes")
+    print(f"  Matrix shape: {n_cells} cells x {n_genes} genes")
 
     # Compute pseudo-bulk (mean across cells)
     print("  Computing mean expression...")
@@ -80,7 +80,7 @@ def compute_pseudobulk_expression(ensg_to_symbol: dict):
 
 
 def filter_embeddings(gene_expression: dict, n_genes: int):
-    """Top N発現遺伝子で埋め込みをフィルタリング"""
+    """Filter embeddings by top N expressed genes"""
     print(f"\nFiltering to top {n_genes} expressed genes...")
 
     # Load current Gasperini-aligned gene names
@@ -127,7 +127,7 @@ def filter_embeddings(gene_expression: dict, n_genes: int):
 
 
 def create_index_mapping(top_genes: list):
-    """新しいインデックスマッピングを作成 (v3.3.1形式)"""
+    """Create new index mapping (v3.3.1 format)"""
     print("\nCreating index mapping...")
 
     # Load original ProteinLM gene names
@@ -150,7 +150,7 @@ def create_index_mapping(top_genes: list):
 
 
 def save_filtered_data(top_genes, protein_emb, rna_emb, old_to_new, old_indices, n_genes):
-    """フィルタリングしたデータを保存"""
+    """Save filtered data"""
     suffix = f"_top{n_genes}"
 
     # Protein embeddings
@@ -221,7 +221,7 @@ def main():
     print()
     print("Memory estimate for Self-Attention:")
     attn_memory = 8 * 8 * n_genes * n_genes * 4 / 1e9
-    print(f"  [batch=8, heads=8, {n_genes}, {n_genes}] × 4 bytes = {attn_memory:.1f} GB")
+    print(f"  [batch=8, heads=8, {n_genes}, {n_genes}] x 4 bytes = {attn_memory:.1f} GB")
     print()
     print("Next steps:")
     print("  1. Upload these files to Google Drive cdt_data/")

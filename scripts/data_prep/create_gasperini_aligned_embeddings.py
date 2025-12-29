@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Gasperiniベースで遺伝子リストを再選定し、埋め込みを再生成する
+Re-select gene list based on Gasperini and regenerate embeddings
 
-ProteinLM ∩ Gasperini ∩ scGPT の共通遺伝子（約11,018）を使用
+Uses common genes from ProteinLM intersection Gasperini intersection scGPT (approximately 11,018 genes)
 
-出力:
-- k562_gene_embeddings_gasperini_aligned.h5 (RNA, 11018 × 512)
-- human_proteomelm_embeddings_gasperini_aligned.h5 (Protein, 11018 × 768)
+Output:
+- k562_gene_embeddings_gasperini_aligned.h5 (RNA, 11018 x 512)
+- human_proteomelm_embeddings_gasperini_aligned.h5 (Protein, 11018 x 768)
 - protein_index_mapping_gasperini_aligned.npz
 
 Usage:
@@ -35,7 +35,7 @@ ORIGINAL_PROTEOMELM = DATA_DIR / "processed/embeddings/human_proteomelm_embeddin
 
 
 def load_ensg_to_symbol_mapping() -> dict:
-    """Morris STINGseqデータからENSG → gene symbolマッピングを作成"""
+    """Create ENSG to gene symbol mapping from Morris STINGseq data"""
     print("Loading ENSG → symbol mapping from Morris data...")
     with h5py.File(MORRIS_DATA, 'r') as f:
         gene_ids = [g.decode() if isinstance(g, bytes) else g for g in f['gene_ids'][:]]
@@ -47,7 +47,7 @@ def load_ensg_to_symbol_mapping() -> dict:
 
 
 def get_gasperini_genes(ensg_to_symbol: dict) -> set:
-    """Gasperini scRNA-seqで発現している遺伝子（シンボル形式）"""
+    """Get genes expressed in Gasperini scRNA-seq (symbol format)"""
     print("Loading Gasperini genes...")
     with gzip.open(GASPERINI_GENES, 'rt') as f:
         gasperini_ensg = [line.strip() for line in f]
@@ -62,7 +62,7 @@ def get_gasperini_genes(ensg_to_symbol: dict) -> set:
 
 
 def get_scgpt_genes() -> set:
-    """scGPT vocabularyに含まれる遺伝子"""
+    """Get genes in scGPT vocabulary"""
     print("Loading scGPT vocabulary...")
     with open(SCGPT_VOCAB, 'r') as f:
         vocab = json.load(f)
@@ -85,7 +85,7 @@ def get_proteomelm_genes() -> tuple:
 
 
 def create_aligned_gene_list():
-    """Gasperini ∩ scGPT ∩ ProteinLM の共通遺伝子リストを作成"""
+    """Create common gene list from Gasperini intersection scGPT intersection ProteinLM"""
     print("\n" + "=" * 60)
     print("Creating Gasperini-aligned gene list")
     print("=" * 60)
@@ -138,7 +138,7 @@ def save_proteomelm_embeddings(genes, uniprot_ids, embeddings):
 
 
 def create_index_mapping(aligned_genes: list):
-    """Create old → new index mapping for training data compatibility"""
+    """Create old to new index mapping for training data compatibility"""
     # Load original training data to get the original protein indices
     # We need to map from the old ESM2 indices to new aligned indices
 

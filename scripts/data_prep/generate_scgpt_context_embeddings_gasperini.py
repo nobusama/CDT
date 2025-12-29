@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-scGPT Context-Dependent Gene Embeddings Generator (Gasperini版)
+scGPT Context-Dependent Gene Embeddings Generator (Gasperini version)
 
-Gasperini et al. (2019) のK562 scRNA-seqデータを使用して
-コンテキスト依存の遺伝子埋め込みを生成する。
+Uses Gasperini et al. (2019) K562 scRNA-seq data to generate
+context-dependent gene embeddings.
 
-変更点:
-- Morris STINGseq → Gasperini scRNA-seq (GSE120861)
-- CDTの訓練データと同じソースを使用
+Changes:
+- Morris STINGseq to Gasperini scRNA-seq (GSE120861)
+- Uses the same source as CDT training data
 
 Usage:
     conda activate scgpt2
@@ -44,7 +44,7 @@ GASPERINI_EXPRS = GASPERINI_SCRNA_DIR / "GSE120861_at_scale_screen.exprs.mtx"
 GASPERINI_GENES = GASPERINI_SCRNA_DIR / "GSE120861_at_scale_screen.genes.txt.gz"
 GASPERINI_CELLS = GASPERINI_SCRNA_DIR / "GSE120861_at_scale_screen.cells.txt.gz"
 
-# Morris data for ENSG → symbol mapping
+# Morris data for ENSG to symbol mapping
 MORRIS_DATA = DATA_DIR / "processed/morris/stingseq_v2.h5"
 
 ALIGNED_GENES_PATH = DATA_DIR / "processed/embeddings/human_proteomelm_embeddings_gasperini_aligned.h5"
@@ -53,7 +53,7 @@ OUTPUT_DIR = DATA_DIR / "processed/embeddings"
 
 def load_ensg_to_symbol_mapping() -> dict:
     """
-    Morris STINGseqデータからENSG → gene symbolマッピングを作成
+    Create ENSG to gene symbol mapping from Morris STINGseq data
     """
     print("Loading ENSG → symbol mapping from Morris data...")
     with h5py.File(MORRIS_DATA, 'r') as f:
@@ -67,7 +67,7 @@ def load_ensg_to_symbol_mapping() -> dict:
 
 def load_gasperini_pseudobulk(ensg_to_symbol: dict, max_cells: int = None) -> tuple:
     """
-    Gasperini scRNA-seqからpseudo-bulk発現プロファイルを作成
+    Create pseudo-bulk expression profile from Gasperini scRNA-seq
 
     Returns:
         pseudobulk: [n_genes] average expression across cells
@@ -134,7 +134,7 @@ def load_gasperini_pseudobulk(ensg_to_symbol: dict, max_cells: int = None) -> tu
 
 def load_aligned_genes(aligned_path: Path) -> list:
     """
-    現在のaligned遺伝子リスト（2360遺伝子）を読み込む
+    Load current aligned gene list (2360 genes)
     """
     with h5py.File(aligned_path, 'r') as f:
         gene_names = [g.decode() if isinstance(g, bytes) else g
@@ -145,7 +145,7 @@ def load_aligned_genes(aligned_path: Path) -> list:
 
 def load_scgpt_model(model_dir: Path, device: str = "cpu"):
     """
-    scGPTモデルを読み込み
+    Load scGPT model
     """
     print(f"Loading scGPT model from {model_dir}")
 
@@ -189,7 +189,7 @@ def generate_context_embeddings(
     device: str = "cpu",
 ) -> tuple:
     """
-    コンテキスト依存の遺伝子埋め込みを生成
+    Generate context-dependent gene embeddings
     """
     print(f"\nGenerating context-dependent embeddings...")
 
@@ -314,7 +314,7 @@ def main():
     print("Using Gasperini scRNA-seq data (GSE120861)")
     print("=" * 60)
 
-    # Load ENSG → symbol mapping
+    # Load ENSG to symbol mapping
     ensg_to_symbol = load_ensg_to_symbol_mapping()
 
     # Load Gasperini pseudo-bulk

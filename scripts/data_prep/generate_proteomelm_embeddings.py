@@ -20,14 +20,14 @@ import requests
 from io import StringIO
 from Bio import SeqIO
 
-# 設定
+# Configuration
 MODEL_NAME = "Bitbol-Lab/ProteomeLM-M"  # 112M params, hidden_size=768
 OUTPUT_FILE = "data/processed/embeddings/human_proteomelm_embeddings.h5"
 FASTA_CACHE = "data/raw/proteome/human_proteome.fasta"
 
 
 def check_device():
-    """デバイス確認"""
+    """Check available device"""
     if torch.cuda.is_available():
         print(f"GPU: {torch.cuda.get_device_name(0)}")
         return "cuda:0"
@@ -40,9 +40,9 @@ def check_device():
 
 
 def download_human_proteome():
-    """UniProtからヒトプロテオーム（Swiss-Prot reviewed）をダウンロード"""
+    """Download human proteome (Swiss-Prot reviewed) from UniProt"""
 
-    # キャッシュがあればそれを使う
+    # Use cache if available
     if os.path.exists(FASTA_CACHE):
         print(f"Using cached FASTA: {FASTA_CACHE}")
         proteins = {}
@@ -97,7 +97,7 @@ def download_human_proteome():
             "description": record.description
         }
 
-    # キャッシュ保存
+    # Save to cache
     os.makedirs(os.path.dirname(FASTA_CACHE), exist_ok=True)
     with open(FASTA_CACHE, 'w') as f:
         f.write(fasta_content)
@@ -116,11 +116,11 @@ def main():
     device = check_device()
     torch_device = torch.device(device.replace(":0", "") if "cuda" in device else device)
 
-    # ヒトプロテオームをダウンロード/ロード
+    # Download/load human proteome
     print("\n[1/4] Loading human proteome...")
     proteins = download_human_proteome()
 
-    # FASTAファイルを準備
+    # Prepare FASTA file
     fasta_path = "/tmp/human_proteome_for_esmc.fasta"
     print(f"\nPreparing FASTA file: {fasta_path}")
     with open(fasta_path, 'w') as f:
@@ -129,7 +129,7 @@ def main():
             f.write(f"{pdata['sequence']}\n")
     print(f"Wrote {len(proteins)} sequences")
 
-    # ESM-C埋め込みを計算
+    # Compute ESM-C embeddings
     # Note: Use GPU if available, otherwise CPU
     esmc_device = device if "cuda" in device else "cpu"
     print(f"\n[2/4] Computing ESM-C embeddings...")
@@ -140,7 +140,7 @@ def main():
     from proteomelm import build_genome_esmc
     esmc_result = build_genome_esmc(fasta_path, device=esmc_device)
 
-    # 戻り値の構造:
+    # Return value structure:
     # - inputs_embeds: Tensor [n_proteins, dim]
     # - group_embeds: Tensor [n_proteins, dim]
     # - group_labels: List[str] (protein IDs from FASTA)
@@ -155,11 +155,11 @@ def main():
     print(f"inputs_embeds shape: {inputs_embeds.shape}")
     print(f"group_embeds shape: {group_embeds.shape}")
 
-    # タンパク質IDとgene nameをマッピング
+    # Map protein IDs to gene names
     valid_protein_ids = []
     valid_gene_names = []
     for label in group_labels:
-        # FASTAヘッダーから UniProt ID を抽出 (sp|XXXXX|GENE形式)
+        # Extract UniProt ID from FASTA header (sp|XXXXX|GENE format)
         parts = label.split("|")
         if len(parts) >= 2:
             uniprot_id = parts[1]
@@ -172,7 +172,7 @@ def main():
 
     print(f"Matched protein IDs: {len(valid_protein_ids)}")
 
-    # ProteomeLMモデルをロード
+    # Load ProteomeLM model
     print(f"\n[3/4] Loading ProteomeLM: {MODEL_NAME}")
     from proteomelm import ProteomeLMForMaskedLM
     model = ProteomeLMForMaskedLM.from_pretrained(MODEL_NAME)
@@ -180,7 +180,7 @@ def main():
     model.eval()
     print(f"ProteomeLM hidden size: {model.config.hidden_size}")
 
-    # テンソルをデバイスに移動
+    # Move tensors to device
     if isinstance(inputs_embeds, np.ndarray):
         inputs_embeds = torch.from_numpy(inputs_embeds)
     if isinstance(group_embeds, np.ndarray):
@@ -189,7 +189,7 @@ def main():
     inputs_embeds = inputs_embeds.to(torch_device)
     group_embeds = group_embeds.to(torch_device)
 
-    # ProteomeLMで処理（バッチ処理）
+    # Process with ProteomeLM (batch processing)
     print(f"\n[4/4] Processing with ProteomeLM...")
     print(f"Input: inputs_embeds {inputs_embeds.shape}, group_embeds {group_embeds.shape}")
     batch_size = 1000
@@ -203,7 +203,7 @@ def main():
         with torch.no_grad():
             outputs = model(
                 inputs_embeds=batch_inputs,
-                group_embeds=batch_groups,  # ← Orthologグループ埋め込みを追加！
+                group_embeds=batch_groups,  # Add ortholog group embeddings!
                 output_hidden_states=True,
                 output_attentions=True
             )
@@ -213,7 +213,7 @@ def main():
     proteomelm_embeddings = torch.cat(all_embeddings, dim=0)
     print(f"ProteomeLM embeddings: {proteomelm_embeddings.shape}")
 
-    # 保存
+    # Save
     print(f"\nSaving to {OUTPUT_FILE}...")
     os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
 

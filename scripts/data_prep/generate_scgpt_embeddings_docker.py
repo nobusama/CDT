@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scGPT埋め込み生成スクリプト（Docker用）
+scGPT Embedding Generation Script (for Docker)
 
 Usage (inside Docker):
     python /workspace/scripts/generate_scgpt_embeddings_docker.py
@@ -14,7 +14,7 @@ import torch
 import h5py
 from pathlib import Path
 
-# scGPTのインポート
+# scGPT imports
 import scgpt
 from scgpt.tasks import embed_data
 
@@ -22,14 +22,14 @@ print(f"scGPT version: {scgpt.__version__}")
 print(f"PyTorch version: {torch.__version__}")
 print(f"CUDA available: {torch.cuda.is_available()}")
 
-# パス設定
+# Path configuration
 WORKSPACE = Path("/workspace")
 DATA_DIR = WORKSPACE / "data/processed/morris"
 OUTPUT_DIR = WORKSPACE / "data/processed/embeddings"
 MODEL_DIR = WORKSPACE / "scgpt_model"
 
 def download_model():
-    """scGPTモデルをダウンロード"""
+    """Download scGPT model"""
     import gdown
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -44,21 +44,21 @@ def download_model():
         print("Model already downloaded")
 
 def generate_embeddings(adata_path, output_name):
-    """埋め込みを生成"""
+    """Generate embeddings"""
     print(f"\nProcessing: {adata_path}")
 
-    # データ読み込み
+    # Load data
     adata = sc.read_h5ad(adata_path)
     print(f"  Cells: {adata.n_obs}, Genes: {adata.n_vars}")
 
-    # 遺伝子名カラムを確認
+    # Check gene name column
     if 'gene_name' in adata.var.columns:
         gene_col = 'gene_name'
     else:
         adata.var['gene_name'] = adata.var_names
         gene_col = 'gene_name'
 
-    # 埋め込み生成
+    # Generate embeddings
     print("  Generating embeddings...")
     adata_embed = embed_data(
         adata,
@@ -67,14 +67,14 @@ def generate_embeddings(adata_path, output_name):
         batch_size=64,
     )
 
-    # 埋め込み抽出
+    # Extract embeddings
     embeddings = adata_embed.X
     if hasattr(embeddings, 'toarray'):
         embeddings = embeddings.toarray()
 
     print(f"  Embedding shape: {embeddings.shape}")
 
-    # 保存
+    # Save
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / output_name
 
@@ -90,22 +90,22 @@ def generate_embeddings(adata_path, output_name):
     return embeddings.shape
 
 def main():
-    # モデルダウンロード
+    # Download model
     download_model()
 
-    # v1の処理
+    # Process v1
     v1_path = DATA_DIR / "stingseq_v1.h5ad"
     if v1_path.exists():
         shape = generate_embeddings(v1_path, "scgpt_embeddings_v1.h5")
-        print(f"\nv1 complete: {shape[0]} cells × {shape[1]} dims")
+        print(f"\nv1 complete: {shape[0]} cells x {shape[1]} dims")
     else:
         print(f"v1 not found: {v1_path}")
 
-    # v2の処理（オプション - 時間がかかる）
+    # Process v2 (optional - takes time)
     v2_path = DATA_DIR / "stingseq_v2.h5ad"
     if v2_path.exists() and os.environ.get('PROCESS_V2', '0') == '1':
         shape = generate_embeddings(v2_path, "scgpt_embeddings_v2.h5")
-        print(f"\nv2 complete: {shape[0]} cells × {shape[1]} dims")
+        print(f"\nv2 complete: {shape[0]} cells x {shape[1]} dims")
 
     print("\nDone!")
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scGPT埋め込み生成スクリプト（ローカル実行用）
+scGPT Embedding Generation Script (for local execution)
 
 Usage:
     conda activate scgpt
@@ -15,7 +15,7 @@ import torch
 import h5py
 from pathlib import Path
 
-# scGPTのインポート
+# scGPT imports
 import scgpt
 from scgpt.tasks import embed_data
 
@@ -23,14 +23,14 @@ print(f"scGPT version: {scgpt.__version__}")
 print(f"PyTorch version: {torch.__version__}")
 print(f"MPS available: {torch.backends.mps.is_available()}")
 
-# パス設定
+# Path configuration
 PROJECT_ROOT = Path(__file__).parent.parent
 DATA_DIR = PROJECT_ROOT / "data/processed/morris"
 OUTPUT_DIR = PROJECT_ROOT / "data/processed/embeddings"
 MODEL_DIR = PROJECT_ROOT / "models/scgpt"
 
 def download_model():
-    """scGPTモデルをダウンロード"""
+    """Download scGPT model"""
     import gdown
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -45,21 +45,21 @@ def download_model():
         print("Model already downloaded")
 
 def generate_embeddings(adata_path, output_name, use_mps=False):
-    """埋め込みを生成"""
+    """Generate embeddings"""
     print(f"\nProcessing: {adata_path}")
 
-    # データ読み込み
+    # Load data
     adata = sc.read_h5ad(adata_path)
     print(f"  Cells: {adata.n_obs}, Genes: {adata.n_vars}")
 
-    # 遺伝子名カラムを確認
+    # Check gene name column
     if 'gene_name' in adata.var.columns:
         gene_col = 'gene_name'
     else:
         adata.var['gene_name'] = adata.var_names
         gene_col = 'gene_name'
 
-    # デバイス設定
+    # Device configuration
     if use_mps and torch.backends.mps.is_available():
         device = torch.device("mps")
         print("  Using MPS (Metal Performance Shaders)")
@@ -67,7 +67,7 @@ def generate_embeddings(adata_path, output_name, use_mps=False):
         device = torch.device("cpu")
         print("  Using CPU")
 
-    # 埋め込み生成
+    # Generate embeddings
     print("  Generating embeddings...")
     try:
         adata_embed = embed_data(
@@ -78,7 +78,7 @@ def generate_embeddings(adata_path, output_name, use_mps=False):
             device=device,
         )
     except TypeError:
-        # deviceパラメータがない場合
+        # If device parameter is not available
         adata_embed = embed_data(
             adata,
             str(MODEL_DIR),
@@ -86,7 +86,7 @@ def generate_embeddings(adata_path, output_name, use_mps=False):
             batch_size=64,
         )
 
-    # 埋め込み抽出（obsm['X_scGPT']に格納されている）
+    # Extract embeddings (stored in obsm['X_scGPT'])
     print(f"  DEBUG: obsm keys = {list(adata_embed.obsm.keys())}")
     print(f"  DEBUG: adata_embed.X shape = {adata_embed.X.shape}")
 
@@ -94,7 +94,7 @@ def generate_embeddings(adata_path, output_name, use_mps=False):
         embeddings = adata_embed.obsm['X_scGPT']
         print(f"  DEBUG: Using obsm['X_scGPT']")
     else:
-        # fallback: return_new_adata=True の場合は X に格納
+        # fallback: if return_new_adata=True, stored in X
         print(f"  DEBUG: X_scGPT not found, using adata_embed.X")
         embeddings = adata_embed.X
 
@@ -104,12 +104,12 @@ def generate_embeddings(adata_path, output_name, use_mps=False):
     print(f"  Embedding shape: {embeddings.shape}")
     print(f"  Embedding dtype: {embeddings.dtype}")
 
-    # 検証: 512次元であることを確認
+    # Verify: should be 512 dimensions
     if embeddings.shape[1] != 512:
         print(f"  WARNING: Expected 512 dims, got {embeddings.shape[1]}")
         print(f"  This might be gene expression, not cell embeddings!")
 
-    # 保存
+    # Save
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / output_name
 
@@ -125,22 +125,22 @@ def generate_embeddings(adata_path, output_name, use_mps=False):
     return embeddings.shape
 
 def main():
-    # モデルダウンロード
+    # Download model
     download_model()
 
-    # v1の処理
+    # Process v1
     v1_path = DATA_DIR / "stingseq_v1.h5ad"
     if v1_path.exists():
         shape = generate_embeddings(v1_path, "scgpt_embeddings_v1.h5")
-        print(f"\nv1 complete: {shape[0]} cells × {shape[1]} dims")
+        print(f"\nv1 complete: {shape[0]} cells x {shape[1]} dims")
     else:
         print(f"v1 not found: {v1_path}")
 
-    # v2の処理（オプション - 時間がかかる）
+    # Process v2 (optional - takes time)
     v2_path = DATA_DIR / "stingseq_v2.h5ad"
     if v2_path.exists() and os.environ.get('PROCESS_V2', '0') == '1':
         shape = generate_embeddings(v2_path, "scgpt_embeddings_v2.h5")
-        print(f"\nv2 complete: {shape[0]} cells × {shape[1]} dims")
+        print(f"\nv2 complete: {shape[0]} cells x {shape[1]} dims")
 
     print("\nDone!")
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Morris STING-seq データ前処理スクリプト
+Morris STING-seq Data Preprocessing Script
 
-10x Genomics形式のデータをAnnData形式に変換し、
-CDT用の前処理を行う。
+Converts 10x Genomics format data to AnnData format and
+performs preprocessing for CDT.
 
 Usage:
     python scripts/preprocess_morris.py
@@ -18,19 +18,19 @@ from pathlib import Path
 import h5py
 import anndata as ad
 
-# パス設定
+# Path configuration
 PROJECT_ROOT = Path(__file__).parent.parent
 RAW_DIR = PROJECT_ROOT / "data/raw/morris/extracted"
 OUTPUT_DIR = PROJECT_ROOT / "data/processed/morris"
 
 
 def read_10x_mtx(matrix_path, features_path, barcodes_path):
-    """10x Genomics形式のデータを読み込む"""
+    """Read 10x Genomics format data"""
     print(f"  Reading matrix: {matrix_path.name}")
 
-    # Matrix Market形式を読み込み
+    # Read Matrix Market format
     with gzip.open(matrix_path, 'rb') as f:
-        matrix = mmread(f).T.tocsr()  # cells x genes に転置
+        matrix = mmread(f).T.tocsr()  # Transpose to cells x genes
 
     # Features (genes)
     with gzip.open(features_path, 'rt') as f:
@@ -41,7 +41,7 @@ def read_10x_mtx(matrix_path, features_path, barcodes_path):
     with gzip.open(barcodes_path, 'rt') as f:
         barcodes = pd.read_csv(f, sep='\t', header=None, names=['barcode'])
 
-    # 次元検証
+    # Dimension validation
     n_cells, n_genes = matrix.shape
     if n_cells != len(barcodes):
         raise ValueError(f"Matrix has {n_cells} cells but barcodes has {len(barcodes)} entries")
@@ -52,14 +52,14 @@ def read_10x_mtx(matrix_path, features_path, barcodes_path):
 
 
 def create_anndata(matrix, features, barcodes, batch_name):
-    """AnnDataオブジェクトを作成"""
+    """Create AnnData object"""
 
-    # 遺伝子発現のみ抽出（CRISPR Guide Captureを除く）
+    # Extract gene expression only (exclude CRISPR Guide Capture)
     gene_mask = features['feature_type'] == 'Gene Expression'
     gene_features = features[gene_mask].reset_index(drop=True)
     gene_matrix = matrix[:, gene_mask.values]
 
-    # AnnData作成
+    # Create AnnData
     adata = ad.AnnData(
         X=gene_matrix,
         obs=pd.DataFrame(index=barcodes['barcode'].values),
@@ -72,7 +72,7 @@ def create_anndata(matrix, features, barcodes, batch_name):
 
     adata.obs['batch'] = batch_name
 
-    # CRISPR guides情報
+    # CRISPR guides information
     guide_mask = features['feature_type'] == 'CRISPR Guide Capture'
     if guide_mask.any():
         guide_features = features[guide_mask].reset_index(drop=True)
@@ -84,7 +84,7 @@ def create_anndata(matrix, features, barcodes, batch_name):
 
 
 def process_v1():
-    """STING-seq v1を処理"""
+    """Process STING-seq v1"""
     print("\n" + "="*50)
     print("Processing STING-seq v1")
     print("="*50)
@@ -98,7 +98,7 @@ def process_v1():
 
     adata = create_anndata(matrix, features, barcodes, 'v1')
 
-    # GDO (guide) data - v1はGDOファイルにガイド情報がある
+    # GDO (guide) data - v1 has guide information in GDO file
     _, gdo_features, _ = read_10x_mtx(
         RAW_DIR / "GSM5225859_STINGseq-v1_GDO.matrix.mtx.gz",
         RAW_DIR / "GSM5225859_STINGseq-v1_GDO.features.tsv.gz",
@@ -117,7 +117,7 @@ def process_v1():
 
 
 def find_file(pattern, fallback_patterns=None):
-    """ファイルを探す（複数パターン対応）"""
+    """Find file (supports multiple patterns)"""
     files = list(RAW_DIR.glob(pattern))
     if files:
         return files[0]
@@ -130,14 +130,14 @@ def find_file(pattern, fallback_patterns=None):
 
 
 def process_v2_batch(batch_letter):
-    """STING-seq v2の1バッチを処理"""
+    """Process one batch of STING-seq v2"""
     print(f"\n  Processing v2 batch {batch_letter}...")
 
-    # バッチごとのGSMプレフィックス
+    # GSM prefix for each batch
     batch_gsm = {'A': '7108117', 'B': '7108118', 'C': '7108119', 'D': '7108120'}
     gsm = batch_gsm[batch_letter]
 
-    # 実際のファイル名を探す（複数パターン対応）
+    # Find actual file names (supports multiple patterns)
     cDNA_matrix = find_file(
         f"*v2_cDNA-{batch_letter}_matrix*",
         [f"GSM{gsm}_matrix*", f"GSM{gsm}*matrix*"]
@@ -154,7 +154,7 @@ def process_v2_batch(batch_letter):
     matrix, features, barcodes = read_10x_mtx(cDNA_matrix, cDNA_features, cDNA_barcodes)
     adata = create_anndata(matrix, features, barcodes, f'v2_{batch_letter}')
 
-    # GDO data - バーコードをマッチングして読み込む
+    # GDO data - read by matching barcodes
     gdo_files = list(RAW_DIR.glob(f"*v2_GDO-{batch_letter}_features*"))
     if gdo_files:
         gdo_matrix_f = list(RAW_DIR.glob(f"*v2_GDO-{batch_letter}_matrix*"))[0]
@@ -167,14 +167,14 @@ def process_v2_batch(batch_letter):
         if guide_mask.any():
             adata.uns['guide_names'] = gdo_features[guide_mask]['gene_name'].values
 
-            # バーコードをマッチング
+            # Match barcodes
             gdo_bc_set = set(gdo_barcodes['barcode'].values)
             cdna_bc_list = list(adata.obs.index)
 
-            # GDOに存在するバーコードのインデックスを取得
+            # Get index of barcodes that exist in GDO
             gdo_bc_to_idx = {bc: i for i, bc in enumerate(gdo_barcodes['barcode'].values)}
 
-            # cDNA細胞ごとにガイドカウントを割り当て
+            # Assign guide counts for each cDNA cell
             n_guides = guide_mask.sum()
             guide_counts = np.zeros((len(cdna_bc_list), n_guides), dtype=np.float32)
 
@@ -195,7 +195,7 @@ def process_v2_batch(batch_letter):
 
 
 def process_v2():
-    """STING-seq v2を処理（全バッチ統合）"""
+    """Process STING-seq v2 (integrate all batches)"""
     print("\n" + "="*50)
     print("Processing STING-seq v2")
     print("="*50)
@@ -211,17 +211,17 @@ def process_v2():
     if not adatas:
         raise ValueError("No batches could be processed")
 
-    # 統合
+    # Integrate
     print("\n  Concatenating batches...")
     adata_v2 = ad.concat(adatas, join='outer', label='batch_sub', index_unique='_')
 
-    # gene_nameを復元（concatで失われる場合がある）
+    # Restore gene_name (may be lost during concat)
     if 'gene_name' not in adata_v2.var.columns and 'gene_name' in adatas[0].var.columns:
-        # 最初のバッチからgene_nameをコピー
+        # Copy gene_name from first batch
         gene_name_map = dict(zip(adatas[0].var.index, adatas[0].var['gene_name']))
         adata_v2.var['gene_name'] = [gene_name_map.get(g, g) for g in adata_v2.var.index]
 
-    # ガイド名を統一
+    # Unify guide names
     all_guides = set()
     for a in adatas:
         if 'guide_names' in a.uns:
@@ -237,10 +237,10 @@ def process_v2():
 
 
 def add_qc_metrics(adata):
-    """QC metricsを追加"""
+    """Add QC metrics"""
     print("  Adding QC metrics...")
 
-    # 基本的なQCメトリクス
+    # Basic QC metrics
     if sp.issparse(adata.X):
         adata.obs['n_genes'] = np.asarray((adata.X > 0).sum(axis=1)).flatten()
         adata.obs['n_counts'] = np.asarray(adata.X.sum(axis=1)).flatten()
@@ -248,7 +248,7 @@ def add_qc_metrics(adata):
         adata.obs['n_genes'] = (adata.X > 0).sum(axis=1)
         adata.obs['n_counts'] = adata.X.sum(axis=1)
 
-    # ミトコンドリア遺伝子の割合
+    # Mitochondrial gene fraction
     if 'gene_name' in adata.var.columns:
         mt_genes = adata.var_names.str.startswith('MT-') | adata.var['gene_name'].str.startswith('MT-')
     else:
@@ -266,7 +266,7 @@ def add_qc_metrics(adata):
 
 
 def filter_cells(adata, min_genes=200, max_genes=10000, max_pct_mt=20):
-    """細胞をフィルタリング"""
+    """Filter cells"""
     print(f"  Filtering cells (min_genes={min_genes}, max_genes={max_genes}, max_pct_mt={max_pct_mt})...")
 
     n_before = adata.n_obs
@@ -283,13 +283,13 @@ def filter_cells(adata, min_genes=200, max_genes=10000, max_pct_mt=20):
 
 
 def save_for_cdt(adata, output_path):
-    """CDT用にHDF5形式で保存"""
+    """Save in HDF5 format for CDT"""
     print(f"  Saving to {output_path}...")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with h5py.File(output_path, 'w') as f:
-        # 発現行列（疎行列として保存）
+        # Expression matrix (save as sparse matrix)
         if sp.issparse(adata.X):
             X = adata.X.tocsr()
             f.create_dataset('X_data', data=X.data, compression='gzip')
@@ -301,30 +301,30 @@ def save_for_cdt(adata, output_path):
             f.create_dataset('X', data=adata.X, compression='gzip')
             f.attrs['X_sparse'] = False
 
-        # 遺伝子情報
+        # Gene information
         f.create_dataset('gene_ids', data=np.array(adata.var.index, dtype='S'))
         if 'gene_name' in adata.var.columns:
             f.create_dataset('gene_names', data=np.array(adata.var['gene_name'], dtype='S'))
         else:
-            # Ensembl IDから遺伝子名がない場合はIDをそのまま使用
+            # If no gene names from Ensembl ID, use ID as is
             f.create_dataset('gene_names', data=np.array(adata.var.index, dtype='S'))
 
-        # 細胞情報
+        # Cell information
         f.create_dataset('cell_barcodes', data=np.array(adata.obs.index, dtype='S'))
         f.create_dataset('batch', data=np.array(adata.obs['batch'], dtype='S'))
 
-        # QCメトリクス
+        # QC metrics
         f.create_dataset('n_genes', data=adata.obs['n_genes'].values)
         f.create_dataset('n_counts', data=adata.obs['n_counts'].values)
         f.create_dataset('pct_mt', data=adata.obs['pct_mt'].values)
 
-        # ガイド情報
+        # Guide information
         if 'guide_names' in adata.uns:
             f.create_dataset('guide_names', data=np.array(adata.uns['guide_names'], dtype='S'))
         if 'guide_counts' in adata.obsm:
             f.create_dataset('guide_counts', data=adata.obsm['guide_counts'], compression='gzip')
 
-        # メタデータ
+        # Metadata
         f.attrs['n_cells'] = adata.n_obs
         f.attrs['n_genes'] = adata.n_vars
 
@@ -336,27 +336,27 @@ def main():
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # v1の処理
+    # Process v1
     try:
         adata_v1 = process_v1()
         adata_v1 = add_qc_metrics(adata_v1)
         adata_v1 = filter_cells(adata_v1)
         save_for_cdt(adata_v1, OUTPUT_DIR / "stingseq_v1.h5")
 
-        # AnnData形式でも保存（互換性のため）
+        # Also save in AnnData format (for compatibility)
         adata_v1.write_h5ad(OUTPUT_DIR / "stingseq_v1.h5ad")
         print(f"  v1 saved: {adata_v1.n_obs} cells, {adata_v1.n_vars} genes")
     except Exception as e:
         print(f"  Error processing v1: {e}")
 
-    # v2の処理
+    # Process v2
     try:
         adata_v2 = process_v2()
         adata_v2 = add_qc_metrics(adata_v2)
         adata_v2 = filter_cells(adata_v2)
         save_for_cdt(adata_v2, OUTPUT_DIR / "stingseq_v2.h5")
 
-        # AnnData形式でも保存
+        # Also save in AnnData format
         adata_v2.write_h5ad(OUTPUT_DIR / "stingseq_v2.h5ad")
         print(f"  v2 saved: {adata_v2.n_obs} cells, {adata_v2.n_vars} genes")
     except Exception as e:

@@ -2,14 +2,14 @@
 """
 Generate Enformer embeddings for missing enhancers.
 
-不足している4,441エンハンサーのEnformer埋め込みを計算し、
-既存のpilot_1000.h5とマージする。
+Compute Enformer embeddings for the missing 4,441 enhancers
+and merge with existing pilot_1000.h5.
 
 Usage:
     python scripts/data_prep/generate_enformer_missing.py
 
-出力:
-    colab_data_v3/pilot_full.h5 (全5,303エンハンサー)
+Output:
+    colab_data_v3/pilot_full.h5 (all 5,303 enhancers)
 """
 
 import argparse

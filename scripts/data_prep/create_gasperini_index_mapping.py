@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Gasperini-aligned用のインデックスマッピングを作成（v3.3.1形式）
+Create index mapping for Gasperini-aligned (v3.3.1 format)
 
-v3.3.1で使用していた形式:
+v3.3.1 format:
   old_to_new = [[old_idx, new_idx], ...]
-  - old_idx: 元のProteinLM (20420) のインデックス
-  - new_idx: 新しいGasperini-aligned (11018) のインデックス
+  - old_idx: Index in original ProteinLM (20420)
+  - new_idx: Index in new Gasperini-aligned (11018)
 
 Usage:
     python scripts/data_prep/create_gasperini_index_mapping.py
@@ -71,7 +71,7 @@ def main():
         old_idx, new_idx = old_to_new[i]
         old_gene = orig_genes[old_idx]
         new_gene = new_genes[new_idx]
-        match = "✓" if old_gene == new_gene else "✗"
+        match = "OK" if old_gene == new_gene else "MISMATCH"
         print(f"    old_idx={old_idx} ({old_gene}) -> new_idx={new_idx} ({new_gene}) {match}")
 
     # Save

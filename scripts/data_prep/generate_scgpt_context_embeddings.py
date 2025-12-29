@@ -2,14 +2,14 @@
 """
 scGPT Context-Dependent Gene Embeddings Generator
 
-K562のpseudo-bulk発現プロファイルをコンテキストとして、
-コンテキスト依存の遺伝子埋め込みを生成する。
+Generates context-dependent gene embeddings using K562 pseudo-bulk
+expression profile as context.
 
-現在のアプローチ（トークン埋め込みのみ）との違い:
-- トークン埋め込み: 遺伝子名だけから生成、コンテキストなし
-- コンテキスト依存: 発現プロファイル全体を考慮、遺伝子間の関係を反映
+Difference from current approach (token embeddings only):
+- Token embeddings: generated from gene name only, no context
+- Context-dependent: considers entire expression profile, reflects inter-gene relationships
 
-出力形式: [n_genes, 512] - 現在と同じ形状、CDTにそのまま使える
+Output format: [n_genes, 512] - same shape as current, can be used directly in CDT
 
 Usage:
     conda activate scgpt2
@@ -44,7 +44,7 @@ OUTPUT_DIR = DATA_DIR / "processed/embeddings"
 
 def load_k562_pseudobulk(morris_path: Path, max_cells: int = None) -> tuple:
     """
-    K562のpseudo-bulk発現プロファイルを作成
+    Create K562 pseudo-bulk expression profile
 
     Returns:
         pseudobulk: [n_genes] average expression across cells
@@ -95,7 +95,7 @@ def load_k562_pseudobulk(morris_path: Path, max_cells: int = None) -> tuple:
 
 def load_aligned_genes(aligned_path: Path) -> list:
     """
-    現在のaligned遺伝子リスト（2360遺伝子）を読み込む
+    Load current aligned gene list (2360 genes)
     """
     with h5py.File(aligned_path, 'r') as f:
         gene_names = [g.decode() if isinstance(g, bytes) else g
@@ -106,7 +106,7 @@ def load_aligned_genes(aligned_path: Path) -> list:
 
 def load_scgpt_model(model_dir: Path, device: str = "cpu"):
     """
-    scGPTモデルを読み込み
+    Load scGPT model
     """
     print(f"Loading scGPT model from {model_dir}")
 
@@ -151,7 +151,7 @@ def generate_context_embeddings(
     batch_size: int = 500,
 ) -> tuple:
     """
-    コンテキスト依存の遺伝子埋め込みを生成
+    Generate context-dependent gene embeddings
 
     Args:
         model: scGPT TransformerModel
