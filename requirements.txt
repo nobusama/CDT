@@ -1,0 +1,36 @@
+# Core dependencies
+torch>=2.0.0
+transformers>=4.30.0
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# For pre-trained models
+sentencepiece>=0.1.99
+tokenizers>=0.13.0
+
+# Data processing
+datasets>=2.12.0
+tqdm>=4.65.0
+h5py>=3.8.0             # HDF5 file I/O for embeddings
+pyarrow>=12.0.0         # Parquet file support (HuggingFace)
+anndata>=0.9.0          # Single-cell data format (Morris data)
+pyyaml>=6.0             # Configuration files
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Notebooks
+jupyter>=1.0.0
+ipykernel>=6.23.0
+ipywidgets>=8.0.0
+
+# Development
+pytest>=7.3.0
+black>=23.3.0
+flake8>=6.0.0
+
+# Optional: For experiment tracking
+# wandb>=0.15.0
+# tensorboard>=2.13.0
