@@ -63,9 +63,8 @@ If you use CDT in your research, please cite:
 @article{ota2025cdt,
   title={Central Dogma Transformer: Towards Mechanism-Oriented AI for Cellular Understanding},
   author={Ota, Nobuyuki},
-  journal={bioRxiv},
-  year={2025},
-  doi={10.1101/2025.XX.XX.XXXXXX}
+  journal={arXiv preprint},
+  year={2025}
 }
 ```
 
