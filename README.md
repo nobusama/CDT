@@ -60,11 +60,11 @@ CDT v3.3.1 achieves:
 If you use CDT in your research, please cite:
 
 ```bibtex
-@article{ota2025cdt,
+@article{ota2026cdt,
   title={Central Dogma Transformer: Towards Mechanism-Oriented AI for Cellular Understanding},
   author={Ota, Nobuyuki},
   journal={arXiv preprint},
-  year={2025}
+  year={2026}
 }
 ```
 
