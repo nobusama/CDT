@@ -2,6 +2,8 @@
 
 **Towards Mechanism-Oriented AI for Cellular Understanding**
 
+[![arXiv](https://img.shields.io/badge/arXiv-2601.01089-b31b1b.svg)](https://arxiv.org/abs/2601.01089)
+
 CDT is a biology-aligned neural architecture that integrates DNA, RNA, and protein information following the central dogma of molecular biology. Unlike task-oriented approaches that optimize prediction without interpretable representations, CDT's architecture reflects biological information flow, enabling both accurate prediction and mechanistic interpretation.
 
 ## Key Features
