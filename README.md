@@ -79,3 +79,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 Nobuyuki Ota
 Independent Researcher, Burlingame, CA, USA
 ORCID: [0009-0006-6570-9450](https://orcid.org/0009-0006-6570-9450)
+
+For questions, please use GitHub Discussions.
