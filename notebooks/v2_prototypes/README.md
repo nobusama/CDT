@@ -19,4 +19,35 @@ This folder contains prototype notebooks for CDT v2 features. These are experime
 - Direct interpretability: understand your data without black-box transformations
 - Lower barrier to entry: no need to run large foundation models
 
-**Note**: This is a prototype. The API and implementation may change.
+---
+
+## CDT_v2_DNARNA_Prototype.ipynb
+
+**Purpose**: Protein-free CDT using only DNA + RNA (no Protein Language Model required)
+
+**Key Features**:
+- DNA (Enformer) + Raw RNA expression only
+- Removed: Protein projector, Protein self-attention, RNA→Protein cross-attention
+- VCE: 2-modality pooling (DNA + RNA)
+- Validated performance: **Pearson r = 0.5022** (same as 3-modality version!)
+- ~22% parameter reduction (44M vs 57M)
+
+**Why This Approach?**
+- Most experimentalists don't have Proteomics data
+- Proteomics experiments are expensive and time-consuming
+- **Proof**: Protein LM is NOT required for CRISPRi effect prediction
+
+**Architecture**:
+```
+DNA [896, 3072] → Projector → Self-Attn(2 layers)
+                      ↓ Cross-Attn
+RNA [2360] → RawExpressionEncoder → Self-Attn(1 layer)
+                      ↓
+                    VCE (2-modality pooling)
+                      ↓
+                    Task Layer → [n_genes]
+```
+
+---
+
+**Note**: These are prototypes. The API and implementation may change.
