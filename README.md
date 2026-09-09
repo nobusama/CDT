@@ -7,11 +7,11 @@
 > ### The CDT series
 > A mechanism-oriented AI program that models the central dogma one layer at a time.
 >
-> | Stage | Code | Paper |
-> |---|---|---|
-> | **CDT-I** · Central dogma as architecture | [CDT](https://github.com/nobusama/CDT) | [arXiv:2601.01089](https://arxiv.org/abs/2601.01089) |
-> | **CDT-II** · DNA → RNA (transcription) | [CDT2](https://github.com/nobusama/CDT2) | [arXiv:2602.08751](https://arxiv.org/abs/2602.08751)<br>Accepted, *Bioinformatics Advances* |
-> | **CDT-III** · DNA → RNA → Protein (transcription + translation) | [CDT3](https://github.com/nobusama/CDT3) | [arXiv:2603.23361](https://arxiv.org/abs/2603.23361) |
+> | | Layer | Models | Code | Paper |
+> |---|---|---|---|---|
+> | **CDT&#8209;I** | Central dogma as architecture | overview | [CDT](https://github.com/nobusama/CDT) | [arXiv:2601.01089](https://arxiv.org/abs/2601.01089) |
+> | **CDT&#8209;II** | DNA → RNA | transcription | [CDT2](https://github.com/nobusama/CDT2) | [arXiv:2602.08751](https://arxiv.org/abs/2602.08751)<br>Accepted, *Bioinformatics Advances* |
+> | **CDT&#8209;III** | DNA → RNA → Protein | transcription + translation | [CDT3](https://github.com/nobusama/CDT3) | [arXiv:2603.23361](https://arxiv.org/abs/2603.23361) |
 >
 > The series continues along the central dogma. **You are here → CDT-I**
 
